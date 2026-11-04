@@ -1,0 +1,62 @@
+[server]
+host = "0.0.0.0"
+port = 8000
+staff_pin = "0000"
+# The clinic day is local even though stored timestamps use UTC.
+timezone = "America/Toronto"
+[serial]
+baud = 115200
+ping_interval_s = 3
+offline_after_missed_pings = 3
+[signal]
+sample_hz = 50
+ema_alpha = 0.2
+# A longer interruption invalidates the current rep and re-estimates gyro bias.
+max_gap_ms = 200
+[units.mpu6050_4g_500dps]   # MPU-6050 (ALIS PART), ±4 g, ±500 °/s
+accel_per_g = 8192
+gyro_per_dps = 65.5
+[units.counts14]            # ADXL335 on Arduino R4 Minima, 14-bit ADC
+zero = 5400
+per_g = 1080
+[units.counts10]            # ADXL335 on Arduino UNO R3 (ALIS PART), 10-bit ADC
+zero = 338
+per_g = 68
+[orientation]
+complementary_alpha = 0.98
+gyro_bias_still_s = 0.5
+[wifi]
+device_ws_path = "/device"
+mdns_name = "smartrep"   # → smartrep.local
+[calibration]
+reps_required = 3
+max_seconds = 30
+min_prominence_frac = 0.30
+min_cycle_s = 0.8
+min_ref_range_deg = 25
+min_ref_range_g = 0.25
+# Noise scales make angle and acceleration variances comparable.
+angle_noise_deg = 1.0
+accel_noise_g = 0.02
+# Prefer an angle when its movement is meaningful.
+prefer_angle_min_deg = 20
+[reps]
+top_line = 0.75
+bottom_line = 0.25
+attempt_line = 0.35
+good_min_peak = 0.85
+rushed_max_s = 1.2
+slow_min_s = 8.0
+min_rep_s = 0.6
+[sets]
+idle_timeout_s = 8
+disconnect_grace_s = 20
+[status]
+form_check_frac = 0.30
+progress_good_reps = 20
+progress_sessions_in_row = 2
+left_station_idle_min = 10
+[devices]
+# station_id = device_id (real hardware)
+"db-5lb" = "clip-01"     # station box: R4 + ESP32, MPU-6050 on the dumbbell
+"glove-1" = "clip-02"    # UNO R3 (ALIS PART) + ADXL335, USB

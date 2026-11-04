@@ -1,0 +1,25 @@
+# Local environments, generated data, and station credentials
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.db
+*.db-shm
+*.db-wal
+node_modules/
+.env
+firmware/smartrep_esp32_wifi/config.h
+bridge/recordings/
+.DS_Store
+
+# Generated Expo bundles and native build caches
+app/.expo/
+app/dist/
+app/android/
+app/ios/
+*.log
+
+# Local secrets and temporary phone tunnel QR
+.env.*
+!.env.example
+output/phone-connect.png
