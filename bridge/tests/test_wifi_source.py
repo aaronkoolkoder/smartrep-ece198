@@ -57,3 +57,19 @@ def test_duplicate_connection_replaces_and_resumes():
         await source.ingest('clip-01',{'t':'err','msg':'no data from Arduino'},b)
         assert not source.devices()[0]['uart_ok']
     asyncio.run(scenario())
+
+
+def test_lcd_command_is_sanitized_and_restored_after_reconnect():
+    async def scenario():
+        async def callback(device,sample):pass
+        source=HardwareSource(callback,load_config())
+        commands=[]
+        async def send(command):commands.append(command)
+        async def close():pass
+        await source.register(HELLO,'wifi',send,close,object())
+        await source.display('clip-01','Mary|\nSTOP',7,'short')
+        assert commands[-1]=='LCD|MarySTOP|7|short'
+        await source.register(HELLO,'wifi',send,close,object())
+        assert commands[-1]=='LCD|MarySTOP|7|short'
+        assert 'display_command' not in source.devices()[0]
+    asyncio.run(scenario())

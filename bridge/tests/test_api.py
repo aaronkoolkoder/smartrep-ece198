@@ -118,3 +118,20 @@ def test_restart_recovers_abandoned_sets(tmp_path):
         result = client.get(f'/api/sets/{set_id}').json()
         assert result['end_reason'] == 'disconnect'
         assert result['ended_at']
+
+
+def test_lcd_gets_participant_and_authoritative_count(tmp_path):
+    app=create_app(tmp_path/'lcd.db',True)
+    with TestClient(app) as client:
+        updates=[]
+        async def display(device,name,count,quality='good'):
+            updates.append((device,name,count,quality))
+        app.state.source.display=display
+        set_id=client.post('/api/sets',json=BODY).json()['set_id']
+        assert updates[0]==('sim-02','Mary',0,'good')
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline and not any(item[2]>=1 for item in updates):
+            time.sleep(.05)
+        assert any(item[1:] == ('Mary',1,'good') for item in updates)
+        result=client.post(f'/api/sets/{set_id}/finish').json()
+        assert updates[-1]==('sim-02','Mary',result['reps_completed'],'done')

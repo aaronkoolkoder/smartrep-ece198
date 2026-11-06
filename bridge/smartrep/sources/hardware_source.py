@@ -19,7 +19,7 @@ class HardwareSource:
         self.clocks = {}
 
     def devices(self):
-        return [{k:v for k,v in d.items() if k not in ('send','close','token','last_pong','raw_ms','offset')}
+        return [{k:v for k,v in d.items() if k not in ('send','close','token','last_pong','raw_ms','offset','display_command')}
                 for d in self.entries.values()]
 
     async def open(self):
@@ -44,9 +44,11 @@ class HardwareSource:
             'units':hello['units'],'hz':hello.get('hz',50),'fw':hello.get('fw','unknown'),
             'online':True,'streaming':resume,'uart_ok':hello.get('uart_ok',True),
             'rssi':hello.get('rssi'),'address':hello.get('_address',link),'send':send,'close':close,'token':token,
-            'last_pong':time.monotonic()}
+            'last_pong':time.monotonic(),'display_command':previous.get('display_command') if previous else None}
         if resume:
             await send('START')
+        if self.entries[device].get('display_command'):
+            await send(self.entries[device]['display_command'])
         await self._status(device)
         logging.info('Device %s connected over %s',device,link)
         return device
@@ -67,7 +69,6 @@ class HardwareSource:
                         entry[key]=msg[key]
                 if not entry['online']:
                     entry['online']=True
-                    # An active set may survive a temporary link interruption.
                 await self._status(device)
             if kind=='s':
                 raw=int(msg['ms'])
@@ -101,6 +102,18 @@ class HardwareSource:
         await self._send(device,'START')
         self.entries[device]['streaming']=True
         await self._status(device)
+
+    async def display(self,device,name,count,quality='good'):
+        entry=self.entries.get(device)
+        if not entry:
+            return
+        # Strip command delimiters; the LCD fits 16 ASCII characters.
+        safe=''.join(c for c in str(name) if 32<=ord(c)<=126 and c!='|')[:16]
+        quality=quality if quality in ('good','short','rushed','slow','done','cal','cal_saved','cal_error') else 'good'
+        command=f'LCD|{safe}|{max(0,int(count))}|{quality}'
+        entry['display_command']=command
+        if entry['online']:
+            await self._send(device,command)
 
     async def stop(self,device):
         entry=self.entries.get(device)

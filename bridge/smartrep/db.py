@@ -27,7 +27,6 @@ def connect(path):
 def initialize(path):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with connect(path) as db:
-        # Each CREATE is idempotent so restarting preserves saved work.
         schema = Path(__file__).with_name("schema.sql").read_text()
         db.executescript(schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "))
         now = utc_now()

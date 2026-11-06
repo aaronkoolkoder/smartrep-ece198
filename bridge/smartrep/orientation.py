@@ -46,8 +46,7 @@ class Orientation:
             self.pitch, self.roll = accel_pitch, accel_roll
         else:
             self.ready = True
-            # Scale alpha by elapsed time so a short sample gap doesn't change
-            # the filter's time constant. Long gaps restart the whole pipeline.
+            # Preserve the filter time constant across short sample gaps.
             alpha = self.settings["complementary_alpha"] ** (dt * self.config["signal"]["sample_hz"])
             predicted_pitch = self.pitch + (values["gy"] - self.bias["gy"]) * dt
             predicted_roll = self.roll + (values["gx"] - self.bias["gx"]) * dt
@@ -88,7 +87,6 @@ class SignalPipeline:
         ready = True
         if self.units.startswith("mpu6050"):
             angles = self.orientation.update(ms, values)
-            # Gyro values are not calibration candidates; only angles and accel.
             values = {**{k: v for k, v in values.items() if k.startswith("a")}, **angles}
             ready = self.orientation.ready
         smooth = {k: self.filters.setdefault(k, EMA(self.config["signal"]["ema_alpha"])).update(v)

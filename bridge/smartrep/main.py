@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description="SmartRep student prototype bridge (simulation + hardware)")
     parser.add_argument("--simulate", action="store_true", help="Register five simulated MPU-6050 devices")
     parser.add_argument("--port",action="append",default=[],help="Force a USB serial port (repeatable)")
+    parser.add_argument("--small-movement-demo", action="store_true", help="Lower calibration range for a small-movement hardware demonstration")
     parser.add_argument("--crowd",action="store_true",help="Run virtual participants (requires --simulate)")
     parser.add_argument("--host", default=None)
     parser.add_argument("--http-port", type=int, default=None)
@@ -37,6 +38,14 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
     config = tomllib.loads(args.config.read_text()) if args.config.exists() else {}
+    if args.small_movement_demo:
+        from .config import load_config
+        defaults = load_config()
+        defaults.update(config)
+        config = defaults
+        config.setdefault("demo", {})["small_movement"] = True
+        config["calibration"]["min_ref_range_g"] = 0.025
+        config["calibration"]["min_ref_range_deg"] = 3
     host = args.host or config.get("server", {}).get("host", "0.0.0.0")
     port = args.http_port or config.get("server", {}).get("port", 8000)
     if not 1 <= port <= 65535:

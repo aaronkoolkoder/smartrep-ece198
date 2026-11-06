@@ -99,7 +99,7 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     @app.get("/api/health")
     def health():
         return {"ok": True, "version": __version__, "devices_online": sum(d["online"] for d in devices()),
-                "simulate": simulate}
+                "simulate": simulate, "small_movement_demo": config.get("demo", {}).get("small_movement", False)}
 
     @app.get("/api/devices")
     def device_list():

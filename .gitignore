@@ -23,3 +23,7 @@ app/ios/
 .env.*
 !.env.example
 output/phone-connect.png
+
+# Local tunnel binary and temporary links
+.local/
+output/smartrep-phone-qr.png

@@ -5,13 +5,20 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+// Set to 1 for the optional Grove LCD (install Seeed rgb_lcd library).
+#define SMARTREP_LCD 0
+#if SMARTREP_LCD
+#include <rgb_lcd.h>
+#endif
 
 #define DEVICE_ID "clip-01"
 #define FW_VERSION "1.0.0"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
-const uint8_t RED=9, GREEN=10, BLUE=11, MPU_ADDR=0x68;
+const uint8_t STATUS_RED_PIN=9, STATUS_GREEN_PIN=10, STATUS_BLUE_PIN=11, MPU_ADDR=0x68;
 const uint32_t SAMPLE_US=20000, COMMAND_TIMEOUT_MS=10000;
 struct LinkState { char buffer[64]; uint8_t used; bool overflow; bool streaming; uint32_t lastCommand; };
 LinkState usb={};
@@ -21,6 +28,50 @@ LinkState modem={};
 bool sensorOK=false;
 uint8_t failures=0, wifiState=0;
 uint32_t i2cErrors=0, nextSample=0, lastInfo=0, lastInit=0;
+
+
+#if SMARTREP_LCD
+rgb_lcd lcd;
+bool lcdReady=false;
+char displayName[17]="", displayLine[17]="";
+void lcdRow(uint8_t row,const char *text){
+  lcd.setCursor(0,row);
+  for(uint8_t i=0;i<16;i++)lcd.write(text[i]?text[i]:' ');
+}
+void initLCD(){
+  Wire.beginTransmission(0x3E);
+  lcdReady=Wire.endTransmission()==0;
+  if(lcdReady){
+    lcd.begin(16,2);Wire.setClock(100000);lcd.setRGB(160,160,160);
+    strcpy(displayName,"SmartRep        ");
+    strcpy(displayLine,"Ready for a set ");
+    lcdRow(0,displayName);lcdRow(1,displayLine);
+  }
+}
+bool displayCommand(char *cmd){
+  // LCD|name|completed-reps|quality. The bridge supplies the authoritative count.
+  if(strncmp(cmd,"LCD|",4)!=0)return false;
+  char *name=cmd+4,*separator=strchr(name,'|');
+  if(!separator)return true;
+  *separator=0;char *count=separator+1;
+  separator=strchr(count,'|');if(!separator)return true;
+  *separator=0;const char *quality=separator+1;
+  if(!lcdReady)return true;
+  char padded[17];memset(padded,' ',16);padded[16]=0;
+  for(uint8_t i=0;i<16&&name[i];i++)padded[i]=name[i];
+  if(strcmp(displayName,padded)){strcpy(displayName,padded);lcdRow(0,displayName);}
+  char next[17];memset(next,0,sizeof(next));
+  snprintf(next,sizeof(next),"Reps: %u",(unsigned)atoi(count));
+  // Pad before comparing, so old digits disappear without clearing/flickering.
+  uint8_t length=strlen(next);for(uint8_t i=length;i<16;i++)next[i]=' ';
+  next[16]=0;
+  if(strcmp(displayLine,next)){strcpy(displayLine,next);lcdRow(1,displayLine);}
+  if(!strcmp(quality,"short")||!strcmp(quality,"rushed"))lcd.setRGB(220,130,0);
+  else if(!strcmp(quality,"done"))lcd.setRGB(50,100,220);
+  else lcd.setRGB(40,170,60);
+  return true;
+}
+#endif
 
 bool writeRegister(uint8_t reg,uint8_t value){
   Wire.beginTransmission(MPU_ADDR); Wire.write(reg); Wire.write(value);
@@ -57,6 +108,9 @@ void identity(Stream &out,const char *type){
 }
 void command(Stream &out,LinkState &link){
   char *cmd=link.buffer;
+#if SMARTREP_LCD
+  if(displayCommand(cmd))return;
+#endif
   for(uint8_t i=0;cmd[i];i++)cmd[i]=(char)toupper((unsigned char)cmd[i]);
   link.lastCommand=millis();
   if(!strcmp(cmd,"HELLO"))identity(out,"hello");
@@ -93,7 +147,7 @@ void statusLight(){
   else if(wifiState==3||(usb.lastCommand&&now-usb.lastCommand<10000))blue=(now%1000<500)?(now%500)/8:(500-now%500)/8;
   else if(wifiState==1||wifiState==2)blue=(now/150)%2?60:0;
   else red=now%3000<100?60:0;
-  analogWrite(RED,red);analogWrite(GREEN,green);analogWrite(BLUE,blue);
+  analogWrite(STATUS_RED_PIN,red);analogWrite(STATUS_GREEN_PIN,green);analogWrite(STATUS_BLUE_PIN,blue);
   digitalWrite(LED_BUILTIN,(now/500)%2);
 }
 void sample(){
@@ -125,7 +179,7 @@ void sample(){
 #endif
 }
 void setup(){
-  pinMode(RED,OUTPUT);pinMode(GREEN,OUTPUT);pinMode(BLUE,OUTPUT);pinMode(LED_BUILTIN,OUTPUT);
+  pinMode(STATUS_RED_PIN,OUTPUT);pinMode(STATUS_GREEN_PIN,OUTPUT);pinMode(STATUS_BLUE_PIN,OUTPUT);pinMode(LED_BUILTIN,OUTPUT);
   Serial.begin(115200);
 #if defined(ARDUINO_UNOR4_MINIMA)
   Serial1.begin(115200);analogReadResolution(14);
@@ -134,6 +188,9 @@ void setup(){
   Wire.begin();Wire.setClock(100000);
 #if defined(ARDUINO_UNOR4_MINIMA) || defined(WIRE_HAS_TIMEOUT)
   Wire.setWireTimeout(25000,true);
+#endif
+#if SMARTREP_LCD
+  initLCD();
 #endif
   sensorOK=initSensor();lastInit=millis();nextSample=micros();
 }

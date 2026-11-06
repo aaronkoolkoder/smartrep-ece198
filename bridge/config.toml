@@ -22,6 +22,9 @@ per_g = 1080
 [units.counts10]            # ADXL335 on Arduino UNO R3 (ALIS PART), 10-bit ADC
 zero = 338
 per_g = 68
+[units.mma7361_counts12]    # MMA7361, R4 12-bit ADC, 5V reference, +/-1.5g
+zero = 1351.35             # 1.65V / 5V * 4095
+per_g = 655.2             # 0.8V/g / 5V * 4095
 [orientation]
 complementary_alpha = 0.98
 gyro_bias_still_s = 0.5

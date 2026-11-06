@@ -147,9 +147,7 @@ class Calibrator:
                 direction = 1 if value > initial else -1
                 break
         normalized = [(v - low) / span if direction == 1 else (high - v) / span for v in values]
-        # Prominence hysteresis records a peak only after a substantial return.
-        # Use full valleys between peaks for a reference, rather than threshold
-        # crossing values, which would systematically underestimate ROM.
+        # Use full peaks and valleys; threshold crossings underestimate range.
         peaks, valleys, peak_times = [], [normalized[0]], []
         rising = False
         valley = normalized[0]

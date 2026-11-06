@@ -68,10 +68,19 @@ class SessionManager:
             dose["sets_completed"] = sum(s["ended_at"] is not None and s["reps_completed"] >= dose["reps_min"] for s in sets if s["exercise_id"] == dose["exercise_id"])
         return {"participant":profile,"date":self.today(),"dose":doses,"sets":sets}
 
+    async def show_display(self,device,name,count,quality='good'):
+        display=getattr(self.source,'display',None)
+        if display:
+            try:
+                await display(device,name,count,quality)
+            except Exception:
+                # A display/connection problem must not discard saved reps.
+                logging.debug('LCD update failed for %s',device,exc_info=True)
+
     async def start(self, participant, station_id, exercise):
         async with self.lock:
             with connect(self.path) as db:
-                self.require_participant(db, participant)
+                profile=self.require_participant(db, participant)
                 station = db.execute("SELECT * FROM stations WHERE id=?", (station_id,)).fetchone()
                 if not station:
                     raise SessionError("STATION_NOT_FOUND", "Station not found.",404)
@@ -100,7 +109,7 @@ class SessionManager:
                 set_id = db.execute("INSERT INTO sets(session_id,participant_id,exercise_id,station_id,set_number,load_lb,started_at) VALUES (?,?,?,?,?,?,?)",(session_id,participant,exercise,station_id,number,dose["load_lb"],now)).lastrowid
                 target = {k:dose[k] for k in ("sets","reps_min","reps_max","load_lb")}
             self.active[device_id] = {"set_id":set_id,"participant_id":participant,"station_id":station_id,
-                "exercise_id":exercise,"set_number":number,"target":target,
+                "exercise_id":exercise,"set_number":number,"target":target,"display_name":profile["display_name"],
                 "pipeline":SignalPipeline(device["units"],self.config),"detector":RepDetector(reference,self.config),
                 "last_rep":time.monotonic(),"last_sample":time.monotonic(),"last_signal_ms":-1000}
             try:
@@ -110,6 +119,7 @@ class SessionManager:
                 with connect(self.path) as db:
                     db.execute("UPDATE sets SET ended_at=?,end_reason='disconnect' WHERE id=?",(utc_now(),set_id))
                 raise SessionError("DEVICE_OFFLINE","Could not start this station. Ask staff.",503)
+            await self.show_display(device_id,profile["display_name"],0)
             self.visits[participant] = {"station_id":station_id,"at":time.monotonic(),"left":False}
             logging.info("Set %s started: participant %s, station %s",set_id,participant,station_id)
             result = {"set_id":set_id,"set_number":number,"exercise_id":exercise,"target":target}
@@ -145,6 +155,7 @@ class SessionManager:
             # Explicit field names prevent a quality label becoming SQL input.
             good,short,rushed = (int(event["quality"] == q) for q in ("good","short","rushed"))
             db.execute("UPDATE sets SET reps_completed=?,good=good+?,short=short+?,rushed=rushed+? WHERE id=?",(event["count"],good,short,rushed,state["set_id"]))
+        await self.show_display(device,state["display_name"],event["count"],event["quality"])
         await self.broadcast({"type":"rep","set_id":state["set_id"],**event},state["participant_id"])
         await self.publish_status(state["participant_id"])
 
@@ -165,8 +176,9 @@ class SessionManager:
                 return result
             device = next((d for d,s in self.active.items() if s["set_id"] == set_id),None)
             if device:
-                self.active.pop(device)
+                state=self.active.pop(device)
                 await self.source.stop(device)
+                await self.show_display(device,state["display_name"],result["reps_completed"],"done")
             with connect(self.path) as db:
                 db.execute("UPDATE sets SET ended_at=?,end_reason=? WHERE id=?",(utc_now(),reason,set_id))
             result = self.detail(set_id)

@@ -20,7 +20,7 @@ class CalibrationManager:
             raise SessionError("INVALID_PIN","That PIN doesn't match. Ask staff.",403)
         async with manager.lock:
             with connect(manager.path) as db:
-                manager.require_participant(db,participant)
+                profile = manager.require_participant(db,participant)
                 station = db.execute("SELECT * FROM stations WHERE id=?",(station_id,)).fetchone()
                 dose = db.execute("SELECT d.*,e.equipment_type FROM doses d JOIN exercises e ON e.id=d.exercise_id WHERE participant_id=? AND exercise_id=?",(participant,exercise)).fetchone()
                 if not station:
@@ -39,7 +39,8 @@ class CalibrationManager:
             manager.reserved.add(device["id"])
             self.recordings[identifier] = {"device":device["id"],"participant":participant,"exercise":exercise,
                 "pipeline":SignalPipeline(device["units"],manager.config),"calibrator":Calibrator(manager.config),
-                "started":time.monotonic(),"samples":[],"result":None,"progress":0}
+                "started":time.monotonic(),"samples":[],"result":None,"progress":0,
+                "display_name":profile["display_name"],"channels":{},"progress_signal":None}
             if hasattr(manager.source,"set_calibrating"):
                 manager.source.set_calibrating(device["id"],True)
             try:
@@ -48,7 +49,8 @@ class CalibrationManager:
                 manager.reserved.discard(device["id"])
                 self.recordings.pop(identifier,None)
                 raise SessionError("DEVICE_OFFLINE","Could not start this station.",503)
-            return {"calibration_id":identifier}
+            await manager.show_display(device["id"],profile["display_name"],0,'cal')
+            return {"calibration_id":identifier,"target":manager.config["calibration"]["reps_required"]}
 
     async def sample(self,device,raw):
         for identifier,state in list(self.recordings.items()):
@@ -60,21 +62,47 @@ class CalibrationManager:
                     raise CalibrationError("Sensor gap during calibration; check the cable and try again.")
                 if sample["ready"]:
                     state["calibrator"].add(sample["ms"],sample["signals"])
-                    # A provisional peak count is feedback only; finish() makes
-                    # the validated signal choice and computes the reference.
-                    value=sample["signals"].get("pitch",sample["signals"].get("y",0))
-                    state["samples"].append(value)
-                    values=state["samples"]
-                    if len(values)>2:
-                        span=max(values)-min(values)
-                        if span>25:
-                            p=(value-min(values))/span
-                            if p>.8:
-                                state["raised"]=True
-                            if state.get("raised") and p<.2:
-                                state["raised"]=False
-                                state["progress"]+=1
-                                await self.sessions.broadcast({"type":"calibration_progress","calibration_id":identifier,"cycles_seen":state["progress"]},state["participant"])
+                    # Lock the feedback axis after its first full cycle.
+                    settings=self.sessions.config["calibration"]
+                    for key,value in sample["signals"].items():
+                        channel=state["channels"].setdefault(key,{
+                            "initial":value,"low":value,"high":value,
+                            "direction":None,"raised":False,"count":0,"last":None})
+                        channel["low"]=min(channel["low"],value)
+                        channel["high"]=max(channel["high"],value)
+                        floor=settings["min_ref_range_deg" if key in ("pitch","roll") else "min_ref_range_g"]
+                        span=channel["high"]-channel["low"]
+                        if channel["direction"] is None and abs(value-channel["initial"])>=floor:
+                            channel["direction"]=1 if value>channel["initial"] else -1
+                        if span<floor or channel["direction"] is None:
+                            continue
+                        p=(value-channel["low"])/span
+                        if channel["direction"]<0:
+                            p=1-p
+                        if p>.8:
+                            channel["raised"]=True
+                        if channel["raised"] and p<.2:
+                            channel["raised"]=False
+                            if channel["last"] is None or (sample["ms"]-channel["last"])/1000>=settings["min_cycle_s"]:
+                                channel["count"]+=1
+                                channel["last"]=sample["ms"]
+                    if state["progress_signal"] is None:
+                        candidates=[key for key,c in state["channels"].items() if c["count"]]
+                        if candidates:
+                            def score(key):
+                                c=state["channels"][key]
+                                angle=key in ("pitch","roll")
+                                noise=settings["angle_noise_deg" if angle else "accel_noise_g"]
+                                span=c["high"]-c["low"]
+                                return (angle and span>=settings["prefer_angle_min_deg"],span/noise)
+                            state["progress_signal"]=max(candidates,key=score)
+                    key=state["progress_signal"]
+                    count=state["channels"][key]["count"] if key else 0
+                    if count!=state["progress"]:
+                        state["progress"]=count
+                        await self.sessions.show_display(device,state["display_name"],count,'cal')
+                        await self.sessions.broadcast({"type":"calibration_progress","calibration_id":identifier,
+                            "cycles_seen":count,"target":settings["reps_required"],"provisional":True},state["participant"])
             except (ValueError,KeyError,TypeError) as error:
                 state["failure"]=str(error)
 
@@ -100,6 +128,8 @@ class CalibrationManager:
             except CalibrationError as error:
                 result={"ok":False,"reason":str(error)}
             state["result"]=result
+            await manager.show_display(state["device"],state["display_name"],state["progress"],
+                                       'cal_saved' if result['ok'] else 'cal_error')
             await manager.broadcast({"type":"calibration_done","calibration_id":identifier,**result},state["participant"])
             return result
 
