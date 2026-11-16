@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import time
+import json
 from .db import connect, utc_now
 from .orientation import SignalPipeline
 from .reps import Reference, RepDetector
@@ -101,6 +102,11 @@ class SessionManager:
                 # Simulator references cannot silently authorize real hardware.
                 if not ref or (ref["device_id"] and ref["device_id"].startswith("sim-") != device_id.startswith("sim-")):
                     raise SessionError("NEEDS_CALIBRATION", "Ask staff to set up this exercise first.",422)
+                if device.get('sensor_ok') is False:
+                    raise SessionError('SENSOR_NOT_READY','Sensor identity check failed. Use staff diagnostics to inspect inputs.',422)
+                available_signals = {'pitch','roll','ax','ay','az'} if device['units'].startswith('mpu6050') else {'x','y','z'}
+                if ref['signal'] not in available_signals:
+                    raise SessionError("NEEDS_CALIBRATION", "Sensor changed. Calibrate this exercise again.",422)
                 reference = Reference(**{k:ref[k] for k in ("signal","units","ref_low","ref_high","ref_duration_s","direction")})
                 session = db.execute("SELECT id FROM sessions WHERE participant_id=? AND date=? AND ended_at IS NULL", (participant,self.today())).fetchone()
                 now = utc_now()
@@ -146,6 +152,9 @@ class SessionManager:
         event = state["detector"].update(sample["ms"],value)
         if sample["ms"] - state["last_signal_ms"] >= 100:
             state["last_signal_ms"] = sample["ms"]
+            with connect(self.path) as db:
+                db.execute("INSERT INTO motion_samples(participant_id,exercise_id,phase,run_id,sample_ms,channels_json,units,normalized,captured_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (state['participant_id'],state['exercise_id'],'set',state['set_id'],sample['ms'],json.dumps(sample['signals']),state['detector'].reference.units,state['detector'].reference.normalize(value),utc_now()))
             await self.broadcast({"type":"signal","set_id":state["set_id"],"p":[state["detector"].reference.normalize(value)]},state["participant_id"])
         if not event:
             return

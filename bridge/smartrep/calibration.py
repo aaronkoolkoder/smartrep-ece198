@@ -2,6 +2,7 @@
 import asyncio
 import hmac
 import time
+import json
 from .db import connect, utc_now
 from .orientation import SignalPipeline
 from .reps import Calibrator, CalibrationError
@@ -34,29 +35,55 @@ class CalibrationManager:
                 raise SessionError("DEVICE_OFFLINE","Station disconnected, ask staff.",503)
             if device["id"] in manager.active or device["id"] in manager.reserved:
                 raise SessionError("STATION_BUSY","Station is in use. Finish the current set or calibration first.")
-            identifier = self.next_id
-            self.next_id += 1
+            with connect(manager.path) as db:
+                identifier=db.execute("INSERT INTO calibration_runs(participant_id,exercise_id,device_id,started_at) VALUES (?,?,?,?)",
+                    (participant,exercise,device['id'],utc_now())).lastrowid
             manager.reserved.add(device["id"])
             self.recordings[identifier] = {"device":device["id"],"participant":participant,"exercise":exercise,
                 "pipeline":SignalPipeline(device["units"],manager.config),"calibrator":Calibrator(manager.config),
                 "started":time.monotonic(),"samples":[],"result":None,"progress":0,
+                "diagnostic":device.get("sensor_ok") is False,"last_graph_ms":-1000,
                 "display_name":profile["display_name"],"channels":{},"progress_signal":None}
             if hasattr(manager.source,"set_calibrating"):
                 manager.source.set_calibrating(device["id"],True)
             try:
-                await manager.source.start(device["id"])
+                if self.recordings[identifier]['diagnostic'] and hasattr(manager.source,'start_diagnostics'):
+                    await manager.source.start_diagnostics(device['id'])
+                else:
+                    await manager.source.start(device["id"])
             except Exception:
                 manager.reserved.discard(device["id"])
                 self.recordings.pop(identifier,None)
+                if hasattr(manager.source,'set_calibrating'):
+                    manager.source.set_calibrating(device['id'],False)
+                with connect(manager.path) as db:
+                    db.execute("UPDATE calibration_runs SET ended_at=?,status='failed',result_json=? WHERE id=?",
+                        (utc_now(),json.dumps({'ok':False,'reason':'Could not start this station.'}),identifier))
                 raise SessionError("DEVICE_OFFLINE","Could not start this station.",503)
             await manager.show_display(device["id"],profile["display_name"],0,'cal')
-            return {"calibration_id":identifier,"target":manager.config["calibration"]["reps_required"]}
+            return {"calibration_id":identifier,"target":manager.config["calibration"]["reps_required"],"diagnostic":self.recordings[identifier]["diagnostic"]}
 
     async def sample(self,device,raw):
         for identifier,state in list(self.recordings.items()):
             if state["device"] != device or state["result"] is not None:
                 continue
             try:
+                ms=int(raw['ms'])
+                if ms-state['last_graph_ms']>=100:
+                    state['last_graph_ms']=ms
+                    keys=('ax','ay','az','gx','gy','gz') if 'ax' in raw else ('x','y','z')
+                    channels={key:float(raw[key]) for key in keys}
+                    import math
+                    if not all(math.isfinite(value) for value in channels.values()):
+                        raise ValueError('Invalid graph sample')
+                    diagnostic=bool(raw.get('diagnostic') or state['diagnostic'])
+                    with connect(self.sessions.path) as db:
+                        db.execute("INSERT INTO motion_samples(participant_id,exercise_id,phase,run_id,sample_ms,channels_json,units,diagnostic,captured_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (state['participant'],state['exercise'],'calibration',identifier,ms,json.dumps(channels),'raw counts',int(diagnostic),utc_now()))
+                    await self.sessions.broadcast({'type':'calibration_signal','calibration_id':identifier,'ms':ms,
+                        'channels':channels,'diagnostic':diagnostic,'units':'raw counts'},state['participant'])
+                if raw.get('diagnostic') or state['diagnostic']:
+                    continue
                 sample = state["pipeline"].update(raw)
                 if sample["gap"]:
                     raise CalibrationError("Sensor gap during calibration; check the cable and try again.")
@@ -119,6 +146,8 @@ class CalibrationManager:
             if hasattr(manager.source,"set_calibrating"):
                 manager.source.set_calibrating(state["device"],False)
             try:
+                if state['diagnostic']:
+                    raise CalibrationError('Diagnostic readings only: sensor identity must be verified before saving a movement reference.')
                 if state.get("failure"):
                     raise CalibrationError(state["failure"])
                 ref=state["calibrator"].finish()
@@ -127,6 +156,9 @@ class CalibrationManager:
                 result={"ok":True,"signal":ref.signal,"units":ref.units,"ref_low":ref.ref_low,"ref_high":ref.ref_high,"ref_duration_s":ref.ref_duration_s,"direction":ref.direction}
             except CalibrationError as error:
                 result={"ok":False,"reason":str(error)}
+            with connect(manager.path) as db:
+                db.execute("UPDATE calibration_runs SET ended_at=?,status=?,result_json=? WHERE id=?",
+                    (utc_now(),'saved' if result['ok'] else 'failed',json.dumps(result),identifier))
             state["result"]=result
             await manager.show_display(state["device"],state["display_name"],state["progress"],
                                        'cal_saved' if result['ok'] else 'cal_error')

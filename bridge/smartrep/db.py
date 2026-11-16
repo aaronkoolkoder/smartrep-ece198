@@ -30,5 +30,6 @@ def initialize(path):
         schema = Path(__file__).with_name("schema.sql").read_text()
         db.executescript(schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "))
         now = utc_now()
+        db.execute("UPDATE calibration_runs SET ended_at=?,status='interrupted' WHERE ended_at IS NULL",(now,))
         db.execute("UPDATE sets SET ended_at=?, end_reason='disconnect' WHERE ended_at IS NULL", (now,))
         db.execute("UPDATE sessions SET ended_at=? WHERE ended_at IS NULL", (now,))

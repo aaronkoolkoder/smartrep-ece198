@@ -135,3 +135,13 @@ def test_lcd_gets_participant_and_authoritative_count(tmp_path):
         assert any(item[1:] == ('Mary',1,'good') for item in updates)
         result=client.post(f'/api/sets/{set_id}/finish').json()
         assert updates[-1]==('sim-02','Mary',result['reps_completed'],'done')
+
+
+def test_sensor_change_requires_new_calibration(tmp_path):
+    path=tmp_path/'sensor-change.db'
+    with TestClient(create_app(path,True)) as client:
+        with connect(path) as db:
+            db.execute("UPDATE rep_references SET signal='x',units='g' WHERE participant_id='123129'")
+        response=client.post('/api/sets',json=BODY)
+        assert response.status_code==422
+        assert response.json()['error']['code']=='NEEDS_CALIBRATION'

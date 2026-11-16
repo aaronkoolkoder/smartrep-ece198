@@ -27,3 +27,6 @@ output/phone-connect.png
 # Local tunnel binary and temporary links
 .local/
 output/smartrep-phone-qr.png
+
+# Captured hardware diagnostic snapshot (live graphs are in the app)
+bridge/static/mpu-input-check.html

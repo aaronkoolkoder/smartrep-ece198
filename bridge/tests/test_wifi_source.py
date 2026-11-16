@@ -73,3 +73,21 @@ def test_lcd_command_is_sanitized_and_restored_after_reconnect():
         assert commands[-1]=='LCD|MarySTOP|7|short'
         assert 'display_command' not in source.devices()[0]
     asyncio.run(scenario())
+
+
+def test_wifi_keeps_device_when_usb_is_also_connected():
+    async def scenario():
+        async def callback(device,sample): pass
+        async def send(command): pass
+        closed=[]
+        async def close(): closed.append(True)
+        source=HardwareSource(callback,load_config())
+        await source.register({**HELLO,'sensor_ok':True,'lcd_ok':True,'buzzer_pin':2},'wifi',send,close,object())
+        import pytest
+        with pytest.raises(ValueError,match='already connected over Wi-Fi'):
+            await source.register(HELLO,'serial',send,close,object())
+        device=source.devices()[0]
+        assert device['link']=='wifi' and device['online']
+        assert device['sensor_ok'] and device['lcd_ok'] and device['buzzer_pin']==2
+        assert not closed
+    asyncio.run(scenario())

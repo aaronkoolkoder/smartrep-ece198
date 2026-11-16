@@ -172,6 +172,16 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     async def end_session(participant_id: str):
         return await app.state.manager.end_session(participant_id)
 
+    @app.get("/api/participants/{participant_id}/history.xlsx")
+    def history_download(participant_id: str):
+        from .history_export import export_history
+        from fastapi.responses import Response
+        content=export_history(path,participant_id)
+        if content is None:
+            raise SessionError('PARTICIPANT_NOT_FOUND','Participant not found.',404)
+        return Response(content,media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition':f'attachment; filename="smartrep-{participant_id}-history.xlsx"'})
+
     @app.get("/api/dashboard")
     async def dashboard():
         return {**app.state.manager.snapshot(), "crowd_running": app.state.crowd.running}

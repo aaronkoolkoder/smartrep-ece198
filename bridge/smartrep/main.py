@@ -53,7 +53,7 @@ def main():
     if args.reset_db:
         args.db.unlink(missing_ok=True)
     addresses = local_addresses() if host == "0.0.0.0" else [host]
-    print("\nSmartRep bridge running · Scan & Lift · fake data only", flush=True)
+    print("\nSmartRep bridge running · Scan & Lift · demo participants", flush=True)
     for ip in addresses:
         print(f"  Bridge: http://{ip}:{port}  |  API docs: http://{ip}:{port}/docs", flush=True)
     print(f"  Devices: {'five simulated clips' if args.simulate else 'Wi-Fi devices + USB auto-detection'}")

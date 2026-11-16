@@ -1,3 +1,61 @@
+# Current verification status
+
+Updated November 16, 2026. Automated software evidence and physical observations
+are kept separate. See [SYMPOSIUM_READINESS.md](SYMPOSIUM_READINESS.md) for the
+course requirements, system diagram, validation procedure and unresolved items.
+
+## Software checks
+
+- **56 backend tests passed**, including start-failure persistence and station cleanup.
+  Reproduce with `bridge/.venv/bin/python -m pytest bridge/tests -q`.
+- UNO R4 MPU/I2C-LCD/D2 firmware and ESP32 Wi-Fi modem compile successfully with
+  Renesas UNO core 1.6.0 and Espressif ESP32 core 2.0.17 respectively.
+- JavaScript syntax checked with `node --check bridge/static/app.js`.
+- Mobile calibration UI exercised in Chrome at 390×844: actual serial diagnostic
+  frames reach the six-axis graph, with no JavaScript errors or horizontal overflow.
+- Excel endpoint tested for readable XML package structure, per-patient isolation,
+  literal user text, saved set waveforms and flagged diagnostic samples.
+- Tests isolate USB discovery so they cannot seize a connected physical Arduino.
+- Wi-Fi transport tests use a software WebSocket device; they are not radio tests.
+
+## Physical observations
+
+- The new UNO R4 firmware was uploaded over USB and replies as `clip-01`.
+- I2C scan acknowledges LCD at `0x27` and sensor at `0x68`.
+- The sensor identity register reply observed was decimal **117 / 0x75**, while
+  a genuine MPU6050 should identify as **0x68**. This remains unresolved.
+- Sixty raw 14-byte replies were captured while the user tilted the board;
+  all were different. This establishes changing register replies, not correct scale.
+- The LCD reports detected and the user saw **MPU not found**. Output test commands
+  were sent; software cannot confirm the audible buzzer without user observation.
+- A live staff diagnostic graph was then verified through the running app.
+- ESP32 Wi-Fi firmware is compiled/configured locally but **not uploaded**. The
+  photographed ESP32U has no external antenna available. Its UART divider values
+  were described in the handoff but have not been measured/independently verified.
+- No real rep-count/angle accuracy, Wi-Fi range, wall-powered end-to-end session,
+  or clinical usefulness has been established. Do not claim those tests passed.
+
+## Current safeguards
+
+Unexpected identity prevents normal rep counting/reference saving. Staff can inspect
+and export diagnostic frames, which are labelled and kept out of validated reps.
+Station/dashboard status shows sensor failure instead of presenting it as ready.
+Changing from MMA7361 to MPU requires a new compatible calibration. USB cannot replace
+an active Wi-Fi identity repeatedly. Lost samples reset motion; session history survives
+restarts and disconnects. Small-movement demo mode is explicitly labelled.
+
+Graph samples are now stored at 10 Hz for calibration and live sets. Previous waveform
+history was not stored, although existing sets/reps remain in the Excel export.
+Local Wi-Fi secrets, databases, captures, tunnel logs and temporary QR codes stay out
+of Git. This remains a fictional-data classroom prototype, without production access
+controls; the demo PIN is not security for real patient information.
+
+---
+
+## Historical verification record (November 3)
+
+The following is the earlier baseline, not the current station status.
+
 # Verification notes
 
 Verified November 3, 2026 on macOS. The simulation is operational; physical sensing still needs the actual station.

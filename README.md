@@ -15,6 +15,28 @@ MPU-6050 → UNO R4 → ESP32 → Wi-Fi WebSocket ──────┤
 
 This is a student prototype with fake participant data, not a medical device. No real participant records belong in this demo.
 
+## Current physical station
+
+Use `firmware/smartrep_mpu6050_lcd_wifi` for **UNO R4 Minima + MPU6050 + I2C LCD backpack + Grove buzzer on D2**.
+The separate ESP32 modem uses a non-inverting 1kΩ/2kΩ UART divider at 115200 baud.
+The older MMA7361 and Grove RGB LCD sketches remain as separate hardware variants.
+
+Double-click **Start SmartRep.command** on this Mac to start the hardware demo and
+open a temporary phone link/QR. Keep its Terminal window open and the laptop awake.
+Close Arduino Serial Monitor. Wall adapters power the boards but do not replace
+the laptop server. ESP32U needs its external antenna; Wi-Fi is not yet physically verified.
+
+Teacher calibration has live raw-input graphs. The connected MPU currently reports
+an unexpected identity: diagnostics may display changing inputs, but saving a
+calibration and counting real reps remain blocked. Do not present this as verified accuracy.
+Patient and instructor views include **Download Excel** for all saved sets, reps,
+calibrations, and graph samples recorded since graph logging was added. Earlier
+waveforms were not stored and cannot be reconstructed.
+
+See [current wiring and test steps](docs/MPU_ESP32_QUICK_START.md),
+[verification evidence](docs/VERIFICATION.md), and the
+[presentation and symposium checklist](docs/SYMPOSIUM_READINESS.md).
+
 ## Use the running app
 
 - Participant app: [localhost:8000](http://127.0.0.1:8000/).

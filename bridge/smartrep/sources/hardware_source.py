@@ -36,6 +36,8 @@ class HardwareSource:
         if hello.get('units') not in self.config['units']:
             raise ValueError('Unsupported device units')
         previous = self.entries.get(device)
+        if previous and previous['online'] and previous['link']=='wifi' and link=='serial':
+            raise ValueError('Device is already connected over Wi-Fi')
         if previous and previous['online']:
             logging.warning('Duplicate device %s: replacing %s with %s',device,previous.get('address'),str(token))
             await previous['close']()
@@ -43,7 +45,8 @@ class HardwareSource:
         self.entries[device] = {'id':device,'link':link,'sensor':hello.get('sensor','unknown'),
             'units':hello['units'],'hz':hello.get('hz',50),'fw':hello.get('fw','unknown'),
             'online':True,'streaming':resume,'uart_ok':hello.get('uart_ok',True),
-            'rssi':hello.get('rssi'),'address':hello.get('_address',link),'send':send,'close':close,'token':token,
+            'sensor_ok':hello.get('sensor_ok'), 'lcd_ok':hello.get('lcd_ok'),
+            'buzzer_pin':hello.get('buzzer_pin'),'rssi':hello.get('rssi'),'address':hello.get('_address',link),'send':send,'close':close,'token':token,
             'last_pong':time.monotonic(),'display_command':previous.get('display_command') if previous else None}
         if resume:
             await send('START')
@@ -62,9 +65,18 @@ class HardwareSource:
             if not isinstance(msg,dict):
                 return
             kind=msg.get('t')
+            if kind=='raw' and msg.get('ok'):
+                data=bytes(msg['bytes'])
+                if len(data)!=14:
+                    return
+                import struct
+                values=struct.unpack('>7h',data)
+                await self.ingest(device,{'t':'s','ms':msg['ms'],'diagnostic':True,
+                    **dict(zip(('ax','ay','az','gx','gy','gz'),(*values[:3],*values[4:])))},token)
+                return
             if kind in ('pong','hello','info','status'):
                 entry['last_pong']=time.monotonic()
-                for key in ('rssi','uart_ok','uptime_s','i2c_err'):
+                for key in ('rssi','uart_ok','uptime_s','i2c_err','sensor_ok','lcd_ok','buzzer_pin'):
                     if key in msg:
                         entry[key]=msg[key]
                 if not entry['online']:
@@ -86,6 +98,9 @@ class HardwareSource:
                     await self.ingest(device,{'t':'s','ms':msg['ms0']+index*msg['dt'],**values},token)
             elif kind=='err':
                 logging.warning('Device %s: %s',device,msg.get('msg'))
+                if msg.get('msg') in ('MPU-6050 not found','sensor read failed, re-initialising'):
+                    entry['sensor_ok']=False
+                    await self._status(device)
                 if msg.get('msg')=='no data from Arduino':
                     entry['uart_ok']=False
                     await self._status(device)
@@ -100,6 +115,11 @@ class HardwareSource:
 
     async def start(self,device):
         await self._send(device,'START')
+        self.entries[device]['streaming']=True
+        await self._status(device)
+
+    async def start_diagnostics(self,device):
+        await self._send(device,'DIAGSTART')
         self.entries[device]['streaming']=True
         await self._status(device)
 
@@ -218,6 +238,8 @@ class HardwareSource:
                 raw=await asyncio.to_thread(connection.readline)
                 if raw:
                     await self.ingest(device,raw.decode(errors='replace').strip(),token)
+        except ValueError as error:
+            logging.debug('%s: %s',port,error)
         except (serial.SerialException,OSError):
             logging.warning('%s unavailable. If it is in use, close the Arduino Serial Monitor and try again.',port)
         finally:

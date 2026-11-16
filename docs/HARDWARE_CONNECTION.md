@@ -1,3 +1,8 @@
+> **Archived wiring variant:** this guide describes the original Grove RGB LCD
+> and inverting transistor UART circuit. The current D2 buzzer, I2C backpack LCD,
+> MPU6050 and resistor-divider station uses [MPU_ESP32_QUICK_START.md](MPU_ESP32_QUICK_START.md).
+> Do not apply the inverted UART settings below to the current divider wiring.
+
 # Connect a physical SmartRep station
 
 The app and bridge already have a hardware path. Start with USB so sensor and rep tuning can be checked independently of the ESP32 link. No firmware has been uploaded to your boards by this task.

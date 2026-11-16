@@ -21,8 +21,7 @@ void flushBatch(){
 void onSocket(WStype_t type,uint8_t *payload,size_t length){
   if(type==WStype_CONNECTED){
     bridgeUp=true;tellArduino("@WIFI BRIDGE");
-    // Preserve Arduino identity; append transport metadata, without owning any
-    // sensor or participant logic on this modem.
+    // Reuse the Arduino device identity over Wi-Fi.
     String hello(identity);hello.replace("\"t\":\"info\"","\"t\":\"hello\"");
     if(hello.endsWith("}"))hello.remove(hello.length()-1);
     hello+=",\"link\":\"wifi\",\"via\":\"esp32\",\"rssi\":"+String(WiFi.RSSI())+",\"mac\":\""+WiFi.macAddress()+"\"}";
@@ -34,8 +33,10 @@ void onSocket(WStype_t type,uint8_t *payload,size_t length){
 }
 void completeLine(){
   line[used]=0;
-  if(strstr(line,"\"t\":\"info\"")){
+  if(strstr(line,"\"t\":\"info\"")||strstr(line,"\"t\":\"hello\"")){
     strncpy(identity,line,sizeof(identity)-1);identity[sizeof(identity)-1]=0;haveIdentity=true;
+    Serial.println(line);
+    if(bridgeUp)socket.sendTXT(line);
   }else if(bridgeUp&&used){
     if(batchUsed+used+2>=sizeof(batch))flushBatch();
     memcpy(batch+batchUsed,line,used);batchUsed+=used;batch[batchUsed++]='\n';batchLines++;
@@ -44,15 +45,14 @@ void completeLine(){
 }
 void setup(){
   Serial.begin(115200);
-  // Both PN2222 level-shifter stages invert their signal. invert=true tells
-  // the ESP32 UART to undo the inversion on RX AND TX; Arduino Serial1 stays normal.
-  Serial2.begin(115200,SERIAL_8N1,16,17,true);
+  Serial2.begin(115200,SERIAL_8N1,16,17,false);
   WiFi.mode(WIFI_STA);WiFi.setSleep(false);
+  Serial2.println("HELLO");
   tellArduino("@WIFI CONNECTING");WiFi.begin(WIFI_SSID,WIFI_PASSWORD);lastWiFiTry=millis();
   socket.onEvent(onSocket);socket.setReconnectInterval(5000);
 }
 void loop(){
-  while(Serial2.available()){
+  for(uint16_t n=0;n<512&&Serial2.available();n++){
     char c=(char)Serial2.read();lastUART=millis();
     if(c=='\r')continue;
     if(c=='\n'){if(!overflow)completeLine();used=0;overflow=false;}
@@ -62,8 +62,12 @@ void loop(){
   if(WiFi.status()==WL_CONNECTED){
     if(!configured&&haveIdentity){
       tellArduino("@WIFI UP");MDNS.begin("smartrep-modem");
-      IPAddress address=MDNS.queryHost("smartrep");
-      String host=address==IPAddress(0,0,0,0)?String(BRIDGE_HOST):address.toString();
+      String host=BRIDGE_HOST;
+      if(host.endsWith(".local")){
+        String name=host.substring(0,host.length()-6);
+        IPAddress address=MDNS.queryHost(name.c_str());
+        if(address!=IPAddress(0,0,0,0))host=address.toString();
+      }
       socket.begin(host.c_str(),BRIDGE_PORT,"/device");configured=true;
     }
     if(configured)socket.loop();

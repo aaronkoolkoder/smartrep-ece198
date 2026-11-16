@@ -75,3 +75,26 @@ CREATE TABLE reps (
   t_start_ms  INTEGER NOT NULL,
   PRIMARY KEY (set_id, idx)
 );
+CREATE TABLE calibration_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  status TEXT NOT NULL DEFAULT 'recording',
+  result_json TEXT
+);
+CREATE TABLE motion_samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id TEXT NOT NULL,
+  exercise_id TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  run_id INTEGER NOT NULL,
+  sample_ms INTEGER NOT NULL,
+  channels_json TEXT NOT NULL,
+  units TEXT NOT NULL,
+  normalized REAL,
+  diagnostic INTEGER NOT NULL DEFAULT 0,
+  captured_at TEXT NOT NULL
+);

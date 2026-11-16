@@ -50,3 +50,18 @@ def test_ui_and_station_list(tmp_path):
         assert len(client.get('/api/stations').json())==5
         assert client.post('/api/sim/crowd',json={'enabled':True}).json()['crowd_running']
         assert not client.post('/api/sim/crowd',json={'enabled':False}).json()['crowd_running']
+
+
+def test_start_failure_releases_station_and_records_failure(tmp_path):
+    app=create_app(tmp_path/'start-failure.db',True)
+    with TestClient(app) as client:
+        async def fail(device):
+            raise ConnectionError('Disconnected during start')
+        app.state.source.start=fail
+        response=client.post('/api/calibrations',json=BODY)
+        assert response.status_code==503
+        assert not app.state.manager.reserved
+        assert not app.state.calibrations.recordings
+        with connect(tmp_path/'start-failure.db') as db:
+            row=db.execute('SELECT status,ended_at FROM calibration_runs').fetchone()
+            assert row['status']=='failed' and row['ended_at']
