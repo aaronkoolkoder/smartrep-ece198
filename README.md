@@ -1,69 +1,90 @@
-# SmartRep Scan and Lift
+# SmartRep · Scan & Lift
 
-SmartRep is a working ECE 198 exercise-tracking prototype for a fictional CCCARE participant cohort. The participant app guides station selection, live sets and personal calibration; the instructor dashboard shows progress, alerts and connected stations. A Python bridge counts motion from either simulated sensors or Arduino stations.
+An ECE 198 exercise-tracking prototype that connects a motion sensor to a patient
+app, a clinician dashboard, and local LCD/buzzer feedback.
 
-```text
-Simulation ───────────────────────────────────────┐
-MPU-6050 → UNO R4 → USB ──────────────────────────┤
-MPU-6050 → UNO R4 → ESP32 → Wi-Fi WebSocket ──────┤
-                                                 ▼
-                                  Python bridge + SQLite
-                                     │               │
-                              Participant app   Instructor dashboard
-                              browser / Expo      browser
+Patients select their prescribed exercise, complete a calibrated set, and review
+results. Instructors establish movement references and monitor progress. Saved
+exercise history and graph samples can be downloaded as Excel workbooks.
+
+> **Current status:** the app, simulator, live-input graphs, LCD connection and D2
+> buzzer test are available. The attached MPU returns changing inputs but has also
+> shown intermittent read failures and an unusual ID. Physical rep accuracy remains
+> unverified. ESP32 Wi-Fi firmware is uploaded, but the wall-power test did **not**
+> connect to the server; the ESP32U has no external antenna fitted. Use USB for the
+> current hardware demonstration. This project uses fictional patient records.
+
+## Features
+
+| Feature | What it does | Status |
+|---|---|---|
+| Patient exercise app | Station selection, prescribed sets, live counts, feedback and summaries | Implemented; simulator walkthrough verified |
+| Instructor dashboard | Patient progress, station availability and status alerts | Implemented |
+| Teacher calibration | Three reference movements, live graphs, detected-cycle counter and saved reference | Implemented; real sensor reads must succeed |
+| Rep detection | Calibrated range, hysteresis, timing and good/short/rushed/slow feedback | Software-tested; physical accuracy still needs measurement |
+| LCD feedback | Patient name, completed reps, calibration progress and result | LCD detected and text observed |
+| Grove buzzer on D2 | Short tone for counted reps; one-second manual test | Manual D2 tone heard; full physical rep sequence not verified |
+| Live MPU diagnostics | Acceleration/gyro graphs, raw numbers/bytes, pause, clear and CSV download | Live changing inputs observed; read failures are displayed |
+| Excel exercise history | Patient details, all saved sets/reps, recorded graph data and calibrations | Implemented and software-tested |
+| Phone access | Responsive browser app, temporary Cloudflare link and QR launcher | Implemented; laptop must remain awake |
+| Simulator | Five stations, example patients, room simulation and movement patterns | Working software demonstration without hardware |
+| Persistent history | SQLite records, reconnection snapshots and abandoned-set recovery | Software-tested |
+| ESP32 wireless transport | Bidirectional UART ↔ Wi-Fi WebSocket bridge | Firmware uploaded; end-to-end wall-power connection not verified |
+| Expo companion | Optional React Native client and exported web preview | Included; primary demonstration uses the browser app |
+
+Short attempts do not increment completed reps. Full rushed movements count with a
+warning. The graph and count are relative to the saved exercise reference; this
+system does not measure absolute displacement or independently establish correct form.
+
+## System overview
+
+```mermaid
+flowchart LR
+    MPU[MPU6050] <-->|Shared I2C| UNO[Arduino UNO R4 Minima]
+    LCD[16×2 I2C LCD] <-->|Shared I2C| UNO
+    UNO -->|D2| BUZZ[Grove buzzer]
+    UNO <-->|USB: current hardware path| SERVER[Python FastAPI server]
+    UNO <-->|D0/D1 UART; 1kΩ/2kΩ divider| ESP[ESP32U]
+    ESP <-.->|Wi-Fi: not yet verified| SERVER
+    SERVER <--> DB[(SQLite)]
+    SERVER <--> PATIENT[Patient browser app]
+    SERVER <--> STAFF[Instructor dashboard]
+    SERVER <-->|Optional Cloudflare tunnel| PHONE[Phone browser]
 ```
 
-This is a student prototype with fake participant data, not a medical device. No real participant records belong in this demo.
+**Wall power replaces USB power, not the server.** Both boards can receive USB wall
+power, but wireless operation also needs a working ESP32 link and the running
+laptop server on a reachable network.
 
-## Current physical station
+## Quick start on the existing Mac
 
-Use `firmware/smartrep_mpu6050_lcd_wifi` for **UNO R4 Minima + MPU6050 + I2C LCD backpack + Grove buzzer on D2**.
-The separate ESP32 modem uses a non-inverting 1kΩ/2kΩ UART divider at 115200 baud.
-The older MMA7361 and Grove RGB LCD sketches remain as separate hardware variants.
+1. Plug the Arduino into the Mac with a USB data cable. Close Arduino Serial Monitor.
+2. In Finder, open the project folder and double-click **Start SmartRep.command**.
+3. The launcher starts the small-movement hardware mode, opens a phone link and
+   displays a QR code. Keep its Terminal window open and the laptop awake.
+4. Use the link or QR on your phone. Press **Control+C** in Terminal to stop the
+   processes started by the launcher. Each launch may create a new phone URL.
 
-Double-click **Start SmartRep.command** on this Mac to start the hardware demo and
-open a temporary phone link/QR. Keep its Terminal window open and the laptop awake.
-Close Arduino Serial Monitor. Wall adapters power the boards but do not replace
-the laptop server. ESP32U needs its external antenna; Wi-Fi is not yet physically verified.
+For laptop-only use, double-click **start-smartrep-small-demo.command**; it does
+not need Cloudflare. Open [SmartRep](http://127.0.0.1:8000/app).
 
-The permanent [live MPU diagnostics page](http://127.0.0.1:8000/diagnostics)
-is available through **Staff setup → Check live MPU inputs**. It shows six raw
-channels, raw bytes, pause/clear, diagnostic CSV download, and a **Test buzzer · D2**
-button. It uses the bridge's existing USB/Wi-Fi connection instead of a second
-serial reader. Close the page before calibration or exercise sets; the station is
-reserved while diagnostics are open. The D2 buzzer now uses a 2 kHz tone, verified
-by the user's audible test on November 18.
+| Launcher | Purpose | Database |
+|---|---|---|
+| `Start SmartRep.command` | Small-movement hardware + phone link/QR | `bridge/smartrep-small-demo.db` |
+| `start-smartrep-small-demo.command` | Small-movement hardware, local/LAN access | `bridge/smartrep-small-demo.db` |
+| `start-smartrep-hardware.command` | Normal-range hardware mode | `bridge/smartrep-hardware.db` |
+| `start-smartrep.command` | Five simulated stations and example activity | `bridge/smartrep-demo.db` |
 
-Teacher calibration has live raw-input graphs. Firmware 1.2.0 uses the connected
-board as an MPU6050, as requested by the project owner. An unusual identity reply
-is reported for inspection but does not block initialization. Configuration writes
-and an actual 14-byte sensor read must still succeed; read failures retain their
-existing error handling. Calibrate the mounted sensor before starting sets.
-Patient and instructor views include **Download Excel** for all saved sets, reps,
-calibrations, and graph samples recorded since graph logging was added. Earlier
-waveforms were not stored and cannot be reconstructed.
+Run **one server launcher at a time**. A port-in-use message means another server
+is already using port 8000. Simulation, normal hardware and small-movement mode
+use separate databases. Do not use simulated calibration for the physical sensor.
 
-See [current wiring and test steps](docs/MPU_ESP32_QUICK_START.md),
-[verification evidence](docs/VERIFICATION.md), and the
-[presentation and symposium checklist](docs/SYMPOSIUM_READINESS.md).
+## Setup on another computer
 
-## Use the running app
+### 1. Install the Python server
 
-- Participant app: [localhost:8000](http://127.0.0.1:8000/).
-- Instructor dashboard: [localhost:8000/dashboard](http://127.0.0.1:8000/dashboard).
-- Native-screen web preview: [localhost:8000/phone](http://127.0.0.1:8000/phone), after building the Expo export.
-- API docs: [localhost:8000/docs](http://127.0.0.1:8000/docs).
-- Printable station labels: [station-qr.pdf](http://127.0.0.1:8000/station-qr.pdf).
-
-Mary (`123129`) is selected by default in the browser demo. Click **Scan a station → Dumbbells 5 lb → Bicep curl → Start set**. The simulator supplies real raw MPU-style samples to the same orientation and rep-detection pipeline used for hardware. Reps update live; **Finish set** saves the summary. The simulator menu can introduce short or rushed reps or stop after eight reps.
-
-The instructor view’s **Start room simulation** button runs virtual participants using the actual set manager, database and rep detector. It leaves Mary's station available. Participants stop after their prescribed number of demonstration sets; the room simulation does not run forever. Tom begins with two past sessions of 20 good curls and a Ready to progress status. The account circle changes participants.
-
-For staff calibration: click **Staff calibration**, enter a participant ID and the demo PIN **0000**, choose an exercise, wait for three simulated reps (about eight seconds), then save. A failed recording gives a reason and a retry action. Calibration reserves the station so nobody can start a set simultaneously.
-
-## Start on macOS
-
-Install [Python 3.12](https://www.python.org/downloads/) or newer (3.12 was used for verification). Open Terminal in this project:
+Clone this private repository using an account with access. Python 3.12 is the
+verified setup version. From the repository root on macOS/Linux:
 
 ```sh
 cd bridge
@@ -71,113 +92,236 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-lock.txt
 python -m pip install -e '.[test]'
-python -m smartrep --simulate --crowd
 ```
 
-On this computer the environment is already installed. To relaunch from the project root, use `./start-smartrep.command`, or:
-
-```sh
-cd bridge
-.venv/bin/python -m smartrep --simulate --crowd
-```
-
-## Start on Windows PowerShell
-
-Install Python and open PowerShell in this project:
+On Windows PowerShell:
 
 ```powershell
 cd bridge
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 .\.venv\Scripts\python.exe -m pip install -e ".[test]"
-.\.venv\Scripts\python.exe -m smartrep --simulate --crowd
 ```
 
-Stop with Ctrl+C. Use a different port with `--http-port 8001`. If the address is already in use, stop the previous bridge before relaunching. The current running demo and launcher use `bridge/smartrep-demo.db`; the earlier `smartrep.db` is preserved. The CLI default DB is `bridge/smartrep.db` when launched from `bridge/`. Restarting preserves activity. `--reset-db` deletes the selected demo database and re-seeds it; use it only when intentionally clearing demo history. `--db other-demo.db` keeps a separate run.
+The `.command` launchers are for macOS. On Windows, run the equivalent Python
+command below with `.\.venv\Scripts\python.exe`.
+
+### 2. Choose a mode
+
+Run these from `bridge/` with the virtual environment active:
+
+```sh
+# No hardware needed
+python -m smartrep --simulate --crowd --db smartrep-demo.db
+
+# Physical sensor, normal calibration range
+python -m smartrep --db smartrep-hardware.db
+
+# Small-movement classroom demonstration
+python -m smartrep --small-movement-demo --db smartrep-small-demo.db
+```
+
+Choose one command. The server prints its local/LAN addresses. Use
+`--http-port 8001` if a different port is needed, or `--port /dev/cu.usbmodemXXXX`
+(`--port COM4` on Windows) to specify a serial port.
+
+Restarting preserves saved history. `--reset-db` deletes the selected database;
+use a new `--db` filename when you want an independent run without deleting records.
+
+### 3. Open the app
+
+| Page | Local address |
+|---|---|
+| Welcome screen | [localhost:8000](http://127.0.0.1:8000/) |
+| Patient app | [localhost:8000/app](http://127.0.0.1:8000/app) |
+| Instructor dashboard | [localhost:8000/dashboard](http://127.0.0.1:8000/dashboard) |
+| Live MPU diagnostics | [localhost:8000/diagnostics](http://127.0.0.1:8000/diagnostics) |
+| API documentation | [localhost:8000/docs](http://127.0.0.1:8000/docs) |
+
+The default example patient is **Mary**, ID **123129**. The demo staff PIN is **0000**.
+
+## Hardware setup
+
+### Parts and connections
+
+Current station: **UNO R4 Minima + Grove Base Shield + MPU6050 breakout + standard
+I2C-backpack LCD + Grove buzzer v1.2**. The older MMA7361 and Grove RGB LCD sketches
+remain separate variants; do not flash them onto the current station.
+
+Disconnect power before changing connections. Use a shared GND.
+
+| Component | Arduino / breadboard connection |
+|---|---|
+| LCD VCC / GND | 5V / shared GND |
+| LCD SDA / SCL | Dedicated Arduino SDA / SCL |
+| MPU GND | Shared GND |
+| MPU SDA / SCL | Same SDA / SCL bus as LCD |
+| MPU VCC | Supply appropriate for the actual breakout; a regulated GY-521 commonly accepts 5V |
+| Grove buzzer | Shield socket **D2** |
+| ESP32 GPIO17 / TX2 | Arduino D0 / RX |
+| Arduino D1 / TX | Through the divider below to ESP32 GPIO16 / RX2 |
+| ESP32 GND | Shared GND |
+
+```text
+Arduino D1/TX ── 1 kΩ ──┬── ESP32 GPIO16/RX2
+                        │
+                       2 kΩ
+                        │
+                       GND
+```
+
+Do not put Arduino 5V directly on an ESP32 GPIO or power the ESP32 from Arduino
+3.3V. Power each board through its own USB connector. Disconnect UART signal wires
+when testing with one board unpowered. Confirm MPU supply and SDA/SCL voltage
+compatibility on the actual breakout: a VCC regulator alone does not make its signal
+pins 5V tolerant. Leave MPU AD0/INT/XDA/XCL unused for the basic setup.
+
+### Upload firmware
+
+In Arduino IDE, install **Arduino UNO R4 Boards**, **esp32 by Espressif Systems**,
+**hd44780 by Bill Perry**, and **WebSockets by Markus Sattler** as needed.
+The checked compiler versions are Renesas UNO **1.6.0** and ESP32 core **2.0.17**.
+
+| Board selection | Sketch |
+|---|---|
+| Arduino UNO R4 Minima | `firmware/smartrep_mpu6050_lcd_wifi/smartrep_mpu6050_lcd_wifi.ino` |
+| ESP32 Dev Module | `firmware/smartrep_esp32_wifi/smartrep_esp32_wifi.ino` |
+
+The UNO uses 50 kHz I2C, 50 Hz normal sampling, USB Serial and hardware Serial1.
+Both UART ends use **115200 baud, normal polarity**. The current firmware uses D2
+for the buzzer and retains independent USB and ESP32 connections.
+
+Firmware **1.2.0** treats the attached board as an MPU6050 at the project owner's
+request. Its unusual identity is informational, not an initialization gate.
+Configuration writes and a complete sensor read must still succeed. This choice
+does not establish the chip's true identity or measurement accuracy.
+
+### Optional ESP32 Wi-Fi
+
+1. Fit the ESP32U's external 2.4 GHz antenna and verify the UART divider/wiring.
+2. Copy `firmware/smartrep_esp32_wifi/config.example.h` to `config.h` in that folder.
+3. Enter the Wi-Fi name/password and set `BRIDGE_HOST` to the laptop's **local IP**
+   on that network. `smartrep.local` is a fallback if multicast discovery works.
+4. Upload to the ESP32 via USB. Hold BOOT during connection if upload requires it.
+5. Run the server on the laptop and confirm `/api/devices` reports `link: wifi` and
+   healthy UART/sensor status before removing USB data connections.
+6. Only then move both boards to USB wall adapters and repeat a set.
+
+`config.h` is ignored by Git. Never commit Wi-Fi passwords. The Cloudflare phone URL
+is **not** the ESP32's server address. A school browser-login network is not supported
+by this firmware; use a reachable 2.4 GHz hotspot instead.
+
+**Observed status:** the ESP32 was flashed, but the wall-power test showed no online
+Wi-Fi device. The antenna is absent and the UART/network path has not been validated.
+Wireless remains an included feature requiring completion, not a demonstrated success.
+
+## Patient and instructor workflow
+
+1. **Inspect hardware:** Staff setup → **Check live MPU inputs**. Tilt the sensor
+   and watch raw acceleration/gyro values. **Test buzzer · D2** sends a one-second
+   tone. Close diagnostics afterward to release the station.
+2. **Calibrate:** Staff setup → ID `123129` → PIN `0000` → **Bicep curl**. Hold still
+   briefly, complete three controlled movements, return to the starting position,
+   then save. The live cycle count is provisional until the reference is accepted.
+3. **Exercise:** Scan a station → **Dumbbells · 5 lb → Bicep curl → Start set**.
+   The app and LCD show the patient name/count; counted reps trigger a short D2 tone.
+4. **Review:** Finish the set, inspect feedback, and open the instructor dashboard.
+5. **Export:** Select **Download Excel** in patient activity or patient details.
+
+Secure the sensor firmly and recalibrate after changing its position or exercise.
+Small-movement mode accepts a lower calibration range; it does not measure a 5 cm
+distance. If reads fail, resolve the connection before expecting reliable rep counts.
+
+The standalone diagnostic page reserves the device, so sets/calibrations cannot
+compete for it. Its CSV contains raw diagnostic inputs. Patient Excel downloads
+include **Patient, Sets, Reps, Graph data, Calibration** sheets. Graph recording
+starts with the logging update; older waveforms were not stored. Times are UTC.
 
 ## Use a phone
 
-The responsive browser app works immediately on a phone: join the same 2.4 GHz hotspot as the laptop and open the LAN URL printed by the bridge. The laptop's `127.0.0.1` URL does not work from a different device. iPhone hotspots should use **Maximize Compatibility**. eduroam often blocks device-to-device traffic. If prompted, allow Python through the laptop firewall.
+For a temporary Internet phone link, install **cloudflared** using its
+[official installation instructions](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/),
+then use **Start SmartRep.command**. The launcher can also use the existing ignored
+`.local/cloudflared` binary on this Mac. This binary is not included in the repository.
 
-For native camera QR scanning and sound/haptics, the `app/` folder contains an Expo React Native TypeScript app. Install [Node.js LTS](https://nodejs.org/en/download) (Node 26 was used for the Expo checks) and [Expo Go](https://expo.dev/go) on the phone:
+For LAN access, join the laptop and phone to a network that allows devices to reach
+one another, then open the laptop's printed IP and port. `127.0.0.1` on the phone
+refers to the phone itself. If school DNS blocks a temporary Cloudflare name, mobile
+data may work for phone access. The laptop server must stay awake either way.
 
-```sh
-cd app
-npm ci
-npm start
-```
+For the optional Expo client, install Node.js and an Expo Go version compatible with
+the pinned SDK, then run `npm ci` and `npm start` from `app/`. The Expo development
+QR opens the client; the bridge QR supplies its server address. The primary demo
+requires only the browser, not Expo. See `app/package.json` for build/typecheck scripts.
 
-Scan Expo's development QR with Expo Go. Inside SmartRep, scan the **bridge** QR from the Python terminal or enter `http://<laptop-LAN-IP>:8000`. Enter Mary’s ID `123129`, then choose a simulated station or scan a printed station label. The bridge QR and the Expo development QR serve different purposes. The app remembers the bridge and participant. Its home screen includes sound/vibration settings and staff calibration.
+## Reliability and validation
 
-The project pins Expo SDK 58 and matching dependencies; use an Expo Go version supporting that SDK. If Expo Go reports a mismatch, see [Expo's mismatch guide](https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/). Browser camera scanning depends on browser support and a secure origin; manual station selection is always available. Real-phone camera permission, haptics and silent-mode audio need verification on the actual phone.
-
-To check the native source and build its browser preview:
-
-```sh
-cd app
-npm run typecheck
-npx expo install --check
-npx expo export --platform web
-```
-
-Restart the bridge after the first export to enable `/phone`. This native-screen preview is additional to the main browser app at `/`.
-
-## Connect the Arduino later
-
-Read [the hardware connection guide](docs/HARDWARE_CONNECTION.md). The fastest first hardware test is **UNO R4 Minima + MPU-6050 over USB**, then add the ESP32 modem. Both use the same data path and app. The repository includes both sketches, a USB serial reader, a Wi-Fi device endpoint and reconnect handling. Start hardware mode without `--simulate`, using a separate database so simulated references are not reused for physical movements.
-
-The physical cable, voltage-level circuits, sensor orientation and real rep accuracy still require verification with your actual kit. Compilation and simulated protocol tests do not replace that check.
-
-## Print codes and record motion
-
-From the project root with bridge dependencies installed:
-
-```sh
-bridge/.venv/bin/python tools/make_qr.py --from-seed
-bridge/.venv/bin/python tools/record.py --port /dev/cu.usbmodemXXXX --seconds 30 --label curls_good_10
-```
-
-On Windows replace `bridge/.venv/bin/python` with `bridge\.venv\Scripts\python.exe` and use a port such as `COM4`. The recorder talks directly to the USB Arduino: stop the bridge and close Serial Monitor first. `--device clip-01` can select an automatically discovered Arduino by ID instead. Recording saves raw values and identity/units metadata in `bridge/recordings/`.
-
-Replay without hardware:
-
-```sh
-cd bridge
-.venv/bin/python -m smartrep.synthetic
-.venv/bin/python -m smartrep.reps replay recordings/curls_good_10.csv --ref recordings/curls_cal.csv
-```
-
-Expected: pitch around 0–110 degrees, 10 completed reps and 10 attempts. Raw MPU CSV columns are `ms,ax,ay,az,gx,gy,gz`. ADXL CSVs use `ms,x,y,z`; pass `--units counts10` or `--units counts14`. Hold still for the first half-second of every recording. Calibration uses three slow, full reps and must end at the starting position. Timestamps must increase. Sensor gaps over 200 ms cancel the partial movement; calibration gaps cause a retry.
-
-## How it behaves
-
-- Short attempts do not count toward the dose. Full rushed reps count with a warning; very slow reps are informational.
-- Rep duration is measured between leaving and returning to the bottom threshold. This is shorter than the complete start-to-start cycle.
-- Motion is normalized to the participant's reference. A six-axis IMU estimates the calibrated movement plane; it cannot measure absolute yaw or independently prove exercise form.
-- One set or calibration can own a station at a time. Starting validates participant, prescribed exercise, equipment/load, reference and device availability.
-- Each rep is committed before its WebSocket event is sent. A phone dropping Wi-Fi does not stop the station; reconnecting restores saved counts.
-- Eight seconds without a rep on a healthy sensor finishes the set as idle. A disconnected sensor has a 20-second grace period; reconnect resumes its stream. Shutdown and crash recovery close abandoned sets while retaining saved reps.
-- Alerts follow the brief's priority: Over dose, Behind, Check form, Ready to progress, On track, Done. Today uses America/Toronto; stored timestamps are UTC.
-- All tunable processing values are in `bridge/config.toml`. The staff PIN is a demo gate, not production authentication.
-
-## Verification
+The processing pipeline includes unit conversion, gyro bias estimation, complementary
+orientation filtering, EMA smoothing, calibrated hysteresis and minimum-cycle rules.
+Sample gaps reset partial motion; calibration gaps require a retry. Rep results are
+saved before their live events are sent. Reconnection restores saved counts, and
+shutdown/restart recovery retains completed history.
 
 ```sh
 cd bridge
 .venv/bin/python -m pytest -q
 ```
 
-Tests cover raw unit conversion, biased/noisy orientation, calibration, good/short/rushed/slow and inverted reps, sample gaps, data persistence, API validation, station exclusivity, real-time events, disconnect recovery, device frame parsing, duplicate identity replacement, staff PIN and reference persistence. Browser checks exercise station selection → live rep → saved summary and inspect desktop/mobile layouts. See [verification notes](docs/VERIFICATION.md) for actual tested platforms and remaining physical checks.
+The latest full software run passed **58 tests** before the firmware 1.2.0 policy
+change. That final policy change was compiled/uploaded but received no additional
+movement tests, as requested. Compilation and synthetic tests do not establish
+physical rep accuracy, radio range or repeatable wall-power operation.
+
+For a meaningful physical demonstration, compare three trials of 10 manually counted
+reps, check rest/partial/rushed movements, compare tilt against a rough known-angle
+reference, and test disconnect/restart recovery. Record actual results rather than
+assuming success from changing graphs. See the complete [verification record](docs/VERIFICATION.md).
 
 ## Troubleshooting
 
-- **Can't connect from phone:** use the laptop's LAN address, the same hotspot, and allow Python through the firewall. Some hotspots block multicast; use the printed IP instead of `smartrep.local`.
-- **Serial port busy:** close Arduino Serial Monitor, the standalone recorder, or the other bridge process.
-- **ESP32 can't see hotspot:** enable 2.4 GHz mode and check its external antenna.
-- **Arduino not sending:** inspect Arduino power and UART wiring; this differs from a Wi-Fi failure.
-- **Needs calibration:** hardware mode deliberately rejects seeded simulated references. Do a staff calibration with the actual sensor.
-- **Station in use:** finish the active set or calibration, or pause the room simulation.
-- **Camera not available in browser:** choose a station manually, or use the native Expo Go app.
-- **Too many historical demo sets:** use a fresh `--db` filename, or intentionally reset the demo DB.
+| Symptom | Check |
+|---|---|
+| Serial port busy | Close Arduino Serial Monitor, recorders, and any other server |
+| Sensor errors or several-second pauses | Check short SDA/SCL wires, shared GND, power and read failures; the firmware retries initialization every two seconds |
+| LCD lights but has no text | Confirm I2C wiring and slowly adjust the backpack contrast screw |
+| No buzzer sound | Confirm the cable is in **D2**, fully seated at both ends; use the diagnostic tone button |
+| Station in use | Close diagnostics or finish the active set/calibration |
+| Ask staff to set up | Calibrate the same patient/exercise with the mounted sensor |
+| ESP32 offline | Check antenna, both boards' power, UART divider, hotspot credentials and laptop IP |
+| Phone link stopped working | Relaunch the tunnel; temporary links change and depend on the laptop |
+| Cannot save a reference | Read the reported range, timing, gap or sensor error and retry after fixing it |
 
-A battery-powered wireless clip, direct BLE, cardio sensing, real accounts and clinic integration remain future work. UI references and design decisions are documented in [UI direction](docs/UI_DIRECTION.md).
+## Presentation and symposium
+
+The [readiness checklist](docs/SYMPOSIUM_READINESS.md) maps the supplied course handout
+to implemented features, system/software diagrams, testing, safety, limitations and
+remaining physical work. It includes an eight-minute presentation outline, rough
+accuracy-comparison procedures, acknowledgements, bibliography and AI disclosure.
+Slides, recording/submission, neat wiring and attendance still need the team's work.
+
+This prototype may help demonstrate exercise adherence and instructor feedback;
+clinical effectiveness has not been evaluated. It does not diagnose conditions,
+measure muscle effort or independently prescribe treatment. Use fictional data:
+the demo PIN and participant IDs are not production authentication or privacy controls.
+
+**AI disclosure:** OpenAI Codex assisted with implementation, debugging, tests and
+documentation. The team should review and understand the submitted work and identify
+which physical tests it personally performed. Library/platform acknowledgements and
+primary references are listed in the readiness checklist.
+
+## Repository map
+
+```text
+bridge/smartrep/       API, sensor transport, filtering, calibration, counting, exports
+bridge/static/        Patient app, instructor dashboard, live diagnostic page
+bridge/tests/         Software and protocol tests
+firmware/             Current UNO/ESP32 sketches and older hardware variants
+app/                  Optional Expo client
+tools/                Phone launcher, hardware checks, recording and QR utilities
+docs/                 Wiring, verification and presentation readiness
+output/               Existing QR labels and hardware handoff guides
+```
+
+Local environments, databases, recordings, Wi-Fi secrets and temporary tunnel files
+are excluded from Git. The earlier inverting-transistor guide is archived;
+[MPU_ESP32_QUICK_START.md](docs/MPU_ESP32_QUICK_START.md) describes the current wiring.

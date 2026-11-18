@@ -1,3 +1,15 @@
+# Wireless upload and wall-power status November 18
+
+The ESP32 Wi-Fi firmware was successfully uploaded over USB and its flash hash
+verified. The subsequent wall-power check showed **zero online devices** at the
+running server, while the laptop was on the configured hotspot. Both boards' power
+lights were reported on. The ESP32U has no external antenna fitted. The UART/network
+failure was not localized further; wireless is included but not end-to-end verified.
+The server still runs on the laptop. No wireless success is inferred from upload.
+Earlier entries saying the modem was not uploaded describe prior stages.
+
+---
+
 # Final firmware policy update November 18
 
 At the project owner's request, firmware 1.2.0 uses this board as an MPU6050.

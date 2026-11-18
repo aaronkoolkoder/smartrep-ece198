@@ -138,8 +138,8 @@ Suggested trial log:
 - The present sensor returns an unexpected WHO_AM_I value. Raw inputs change, but
   real calibration and rep validation remain blocked. Never remove the identity
   check just to make the demonstration appear successful.
-- The current station's wireless modem is compiled but not uploaded or physically
-  validated. It requires an external antenna and supported Wi-Fi network. School
+- The current station's wireless modem has been compiled and uploaded, but its
+  wall-power test did not connect and its end-to-end operation is not validated. It requires an external antenna and supported Wi-Fi network. School
   browser-login Wi-Fi is not handled by this firmware.
 - Long I2C wires and mixed-voltage pull-ups can affect reliability. The code uses
   50 kHz I2C, timeouts and bounded recovery; those do not replace a correct circuit.

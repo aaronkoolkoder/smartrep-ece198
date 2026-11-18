@@ -60,3 +60,10 @@ or download diagnostic CSV. **Test buzzer · D2** sends a one-second 2 kHz tone.
 Close diagnostics before starting a calibration or exercise: the station is reserved
 to avoid competing serial readers. Diagnostic streaming resumes after a link reconnect.
 The user confirmed an audible D2 tone on November 18; sensor identity is still unresolved.
+
+## Current wireless status
+
+The ESP32 firmware has now been uploaded and flash-verified. The first wall-powered
+check did not register an online device. Both boards' LEDs were on, but the antenna
+is absent and the Wi-Fi/UART path remains unverified. Retain wireless in the feature
+list with this qualification; use USB as the current data path.
