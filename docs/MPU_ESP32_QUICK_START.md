@@ -1,3 +1,7 @@
+> Firmware 1.2.0: the connected board is treated as an MPU6050. Its identity reply
+> is informational, while failed configuration writes or reads still block operation.
+> Recalibrate before counting reps. No new physical accuracy tests accompany this change.
+
 # MPU6050 + ESP32 station
 
 The UNO R4 runs `firmware/smartrep_mpu6050_lcd_wifi` (hd44780 library).

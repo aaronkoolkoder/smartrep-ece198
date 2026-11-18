@@ -1,3 +1,15 @@
+# Final firmware policy update November 18
+
+At the project owner's request, firmware 1.2.0 uses this board as an MPU6050.
+WHO_AM_I is retained as informational metadata, not an initialization gate.
+Configuration writes and a complete sensor read must succeed. Read failures still
+block normal operation; diagnostic frames cannot be saved as rep references.
+The working D2 tone, LCD display, calibration graphs and Excel history are retained.
+No additional movement or accuracy tests were performed for this policy change.
+Earlier test results below describe their respective revisions, not a new validation.
+
+---
+
 # November 18 integration update
 
 - User confirmed the D2 buzzer's one-second 2 kHz test tone was audible after correcting

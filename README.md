@@ -34,9 +34,11 @@ serial reader. Close the page before calibration or exercise sets; the station i
 reserved while diagnostics are open. The D2 buzzer now uses a 2 kHz tone, verified
 by the user's audible test on November 18.
 
-Teacher calibration has live raw-input graphs. The connected MPU currently reports
-an unexpected identity: diagnostics may display changing inputs, but saving a
-calibration and counting real reps remain blocked. Do not present this as verified accuracy.
+Teacher calibration has live raw-input graphs. Firmware 1.2.0 uses the connected
+board as an MPU6050, as requested by the project owner. An unusual identity reply
+is reported for inspection but does not block initialization. Configuration writes
+and an actual 14-byte sensor read must still succeed; read failures retain their
+existing error handling. Calibrate the mounted sensor before starting sets.
 Patient and instructor views include **Download Excel** for all saved sets, reps,
 calibrations, and graph samples recorded since graph logging was added. Earlier
 waveforms were not stored and cannot be reconstructed.

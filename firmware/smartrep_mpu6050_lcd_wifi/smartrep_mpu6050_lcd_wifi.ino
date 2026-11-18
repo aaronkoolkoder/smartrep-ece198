@@ -19,7 +19,7 @@ hd44780_I2Cexp lcd;
 bool lcdReady=false;
 
 #define DEVICE_ID "clip-01"
-#define FW_VERSION "1.1.0"
+#define FW_VERSION "1.2.0"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
@@ -31,7 +31,8 @@ LinkState usb={};
 #if defined(ARDUINO_UNOR4_MINIMA)
 LinkState modem={};
 #endif
-bool sensorOK=false;
+bool sensorOK=false, identityVerified=false;
+uint8_t sensorIdentity=0;
 uint8_t failures=0, wifiState=0;
 uint32_t i2cErrors=0, nextSample=0, lastInfo=0, lastInit=0, lastRawSample=0;
 
@@ -96,8 +97,12 @@ bool initSensor(){
   for(uint8_t address=0x68;address<=0x69;address++){
     MPU_ADDR=address;
     uint8_t who=0;
-    if(readRegisters(0x75,1,&who)&&who==0x68&&writeRegister(0x6B,0)&&
-       writeRegister(0x1A,3)&&writeRegister(0x1B,8)&&writeRegister(0x1C,8))return true;
+    // This project's board is used as an MPU6050; identity is informational.
+    if(!readRegisters(0x75,1,&who))continue;
+    sensorIdentity=who;identityVerified=who==0x68;
+    uint8_t data[14];
+    if(writeRegister(0x6B,0)&&writeRegister(0x1A,3)&&writeRegister(0x1B,8)&&
+       writeRegister(0x1C,8)&&readRegisters(0x3B,14,data))return true;
   }
   return false;
 #else
@@ -115,6 +120,8 @@ void identity(Stream &out,const char *type){
   out.print(F("adxl335\",\"hz\":50,\"units\":\"counts10\""));
   #endif
 #endif
+  out.print(F(",\"who_am_i\":"));out.print(sensorIdentity);
+  out.print(F(",\"identity_verified\":"));out.print(identityVerified?"true":"false");
   out.print(F(",\"sensor_ok\":"));out.print(sensorOK?"true":"false");
   out.print(F(",\"lcd_ok\":"));out.print(lcdReady?"true":"false");
   out.print(F(",\"buzzer_pin\":2"));

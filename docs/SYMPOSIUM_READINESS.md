@@ -1,3 +1,8 @@
+> **Final policy update:** firmware 1.2.0 treats the attached board as an MPU6050
+> at the owner's request. Identity mismatches are informational; configuration/read
+> failures still block operation. Earlier identity-gating descriptions below are
+> historical. Real count/angle accuracy has not been established by this change.
+
 # Final presentation and symposium readiness
 
 This checklist maps the supplied **Final Presentation and Symposium Info.docx**

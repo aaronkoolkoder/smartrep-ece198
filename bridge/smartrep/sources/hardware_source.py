@@ -45,6 +45,7 @@ class HardwareSource:
         self.entries[device] = {'id':device,'link':link,'sensor':hello.get('sensor','unknown'),
             'units':hello['units'],'hz':hello.get('hz',50),'fw':hello.get('fw','unknown'),
             'online':True,'streaming':resume,'diagnostic_stream':bool(previous and previous.get('diagnostic_stream')),'uart_ok':hello.get('uart_ok',True),
+            'identity_verified':hello.get('identity_verified'),'who_am_i':hello.get('who_am_i'),
             'sensor_ok':hello.get('sensor_ok'), 'lcd_ok':hello.get('lcd_ok'),
             'buzzer_pin':hello.get('buzzer_pin'),'rssi':hello.get('rssi'),'address':hello.get('_address',link),'send':send,'close':close,'token':token,
             'last_pong':time.monotonic(),'display_command':previous.get('display_command') if previous else None}
@@ -79,7 +80,7 @@ class HardwareSource:
                 return
             if kind in ('pong','hello','info','status'):
                 entry['last_pong']=time.monotonic()
-                for key in ('rssi','uart_ok','uptime_s','i2c_err','sensor_ok','lcd_ok','buzzer_pin'):
+                for key in ('rssi','uart_ok','uptime_s','i2c_err','sensor_ok','lcd_ok','buzzer_pin','identity_verified','who_am_i'):
                     if key in msg:
                         entry[key]=msg[key]
                 if not entry['online']:

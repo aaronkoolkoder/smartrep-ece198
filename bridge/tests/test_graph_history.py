@@ -32,7 +32,7 @@ def test_diagnostic_calibration_streams_graph_but_cannot_save_reference(tmp_path
         assert len(graphs)==4
         assert graphs[0]['diagnostic'] and graphs[0]['channels']['az']==8192
         saved=client.post(f"/api/calibrations/{result['calibration_id']}/done").json()
-        assert not saved['ok'] and 'identity' in saved['reason']
+        assert not saved['ok'] and 'sensor reads' in saved['reason']
         with connect(path) as db:
             assert db.execute('SELECT count(*) FROM rep_references').fetchone()[0]==0
             assert db.execute('SELECT count(*) FROM motion_samples WHERE diagnostic=1').fetchone()[0]==4

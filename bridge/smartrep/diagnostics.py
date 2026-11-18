@@ -42,12 +42,12 @@ class DiagnosticViews:
             if sample.get('read_ok') is False:
                 await asyncio.wait_for(view['socket'].send_json({'connected':entry.get('online',False),'frames':view['frames'],
                     'read_error':True,'message':'MPU register read failed — check wiring or power-cycle.',
-                    'sensor_ok':False,'lcd_ok':entry.get('lcd_ok'),'port':entry.get('address',''),'sample':None}),timeout=1)
+                    'sensor_ok':False,'identity_verified':entry.get('identity_verified'),'lcd_ok':entry.get('lcd_ok'),'port':entry.get('address',''),'sample':None}),timeout=1)
                 return
             view['frames']+=1
             await asyncio.wait_for(view['socket'].send_json({'connected':entry.get('online',False),
                 'message':'Live raw readings','frames':view['frames'],'sensor_ok':entry.get('sensor_ok'),
-                'lcd_ok':entry.get('lcd_ok'),'port':entry.get('address','Wi-Fi'),
+                'identity_verified':entry.get('identity_verified'),'lcd_ok':entry.get('lcd_ok'),'port':entry.get('address','Wi-Fi'),
                 'sample':{'time':time.time(),**{key:sample[key] for key in ('ax','ay','az','gx','gy','gz')},
                           'bytes':sample.get('raw_bytes',[])}}),timeout=1)
         except Exception:

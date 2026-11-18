@@ -147,7 +147,7 @@ class CalibrationManager:
                 manager.source.set_calibrating(state["device"],False)
             try:
                 if state['diagnostic']:
-                    raise CalibrationError('Diagnostic readings only: sensor identity must be verified before saving a movement reference.')
+                    raise CalibrationError('Diagnostic readings only: restore successful sensor reads before saving a movement reference.')
                 if state.get("failure"):
                     raise CalibrationError(state["failure"])
                 ref=state["calibrator"].finish()

@@ -103,7 +103,7 @@ class SessionManager:
                 if not ref or (ref["device_id"] and ref["device_id"].startswith("sim-") != device_id.startswith("sim-")):
                     raise SessionError("NEEDS_CALIBRATION", "Ask staff to set up this exercise first.",422)
                 if device.get('sensor_ok') is False:
-                    raise SessionError('SENSOR_NOT_READY','Sensor identity check failed. Use staff diagnostics to inspect inputs.',422)
+                    raise SessionError('SENSOR_NOT_READY','Sensor read failed. Check the connection before starting.',422)
                 available_signals = {'pitch','roll','ax','ay','az'} if device['units'].startswith('mpu6050') else {'x','y','z'}
                 if ref['signal'] not in available_signals:
                     raise SessionError("NEEDS_CALIBRATION", "Sensor changed. Calibrate this exercise again.",422)
