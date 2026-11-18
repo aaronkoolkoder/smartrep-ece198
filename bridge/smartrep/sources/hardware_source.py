@@ -19,7 +19,7 @@ class HardwareSource:
         self.clocks = {}
 
     def devices(self):
-        return [{k:v for k,v in d.items() if k not in ('send','close','token','last_pong','raw_ms','offset','display_command')}
+        return [{k:v for k,v in d.items() if k not in ('send','close','token','last_pong','raw_ms','offset','display_command','diagnostic_stream')}
                 for d in self.entries.values()]
 
     async def open(self):
@@ -44,12 +44,12 @@ class HardwareSource:
         resume=bool(previous and previous['streaming'])
         self.entries[device] = {'id':device,'link':link,'sensor':hello.get('sensor','unknown'),
             'units':hello['units'],'hz':hello.get('hz',50),'fw':hello.get('fw','unknown'),
-            'online':True,'streaming':resume,'uart_ok':hello.get('uart_ok',True),
+            'online':True,'streaming':resume,'diagnostic_stream':bool(previous and previous.get('diagnostic_stream')),'uart_ok':hello.get('uart_ok',True),
             'sensor_ok':hello.get('sensor_ok'), 'lcd_ok':hello.get('lcd_ok'),
             'buzzer_pin':hello.get('buzzer_pin'),'rssi':hello.get('rssi'),'address':hello.get('_address',link),'send':send,'close':close,'token':token,
             'last_pong':time.monotonic(),'display_command':previous.get('display_command') if previous else None}
         if resume:
-            await send('START')
+            await send('DIAGSTART' if self.entries[device]['diagnostic_stream'] else 'START')
         if self.entries[device].get('display_command'):
             await send(self.entries[device]['display_command'])
         await self._status(device)
@@ -65,13 +65,16 @@ class HardwareSource:
             if not isinstance(msg,dict):
                 return
             kind=msg.get('t')
+            if kind=='raw' and not msg.get('ok'):
+                await self.ingest(device,{'t':'s','diagnostic':True,'read_ok':False,'ms':msg.get('ms',0)},token)
+                return
             if kind=='raw' and msg.get('ok'):
                 data=bytes(msg['bytes'])
                 if len(data)!=14:
                     return
                 import struct
                 values=struct.unpack('>7h',data)
-                await self.ingest(device,{'t':'s','ms':msg['ms'],'diagnostic':True,
+                await self.ingest(device,{'t':'s','ms':msg['ms'],'diagnostic':True,'raw_bytes':list(data),
                     **dict(zip(('ax','ay','az','gx','gy','gz'),(*values[:3],*values[4:])))},token)
                 return
             if kind in ('pong','hello','info','status'):
@@ -115,11 +118,16 @@ class HardwareSource:
 
     async def start(self,device):
         await self._send(device,'START')
+        self.entries[device]['diagnostic_stream']=False
         self.entries[device]['streaming']=True
         await self._status(device)
 
+    async def test_buzzer(self,device):
+        await self._send(device,'BUZZTEST')
+
     async def start_diagnostics(self,device):
         await self._send(device,'DIAGSTART')
+        self.entries[device]['diagnostic_stream']=True
         self.entries[device]['streaming']=True
         await self._status(device)
 
@@ -144,6 +152,7 @@ class HardwareSource:
                 except Exception:
                     logging.debug('Could not stop disconnected device %s',device)
             entry['streaming']=False
+            entry['diagnostic_stream']=False
             await self._status(device)
 
     async def disconnected(self,device,token):

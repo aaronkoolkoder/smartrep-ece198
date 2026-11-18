@@ -47,3 +47,12 @@ then start another set and confirm readings, screen updates and beeps.
 Cloudflare supplies the phone URL only. This setup still needs the running
 laptop server; it is not an independent offline rep counter. Firmware compilation
 and software tests alone do not confirm the physical wiring or wireless connection.
+
+## Live diagnostics in the final app
+
+Open `/diagnostics` or Staff setup → Check live MPU inputs. The graphs stream live
+raw acceleration and gyro data through the existing bridge connection. Pause, clear
+or download diagnostic CSV. **Test buzzer · D2** sends a one-second 2 kHz tone.
+Close diagnostics before starting a calibration or exercise: the station is reserved
+to avoid competing serial readers. Diagnostic streaming resumes after a link reconnect.
+The user confirmed an audible D2 tone on November 18; sensor identity is still unresolved.

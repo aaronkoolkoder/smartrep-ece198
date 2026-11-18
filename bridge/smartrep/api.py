@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from .calibration import CalibrationManager
 from .crowd import Crowd
+from .diagnostics import DiagnosticViews
 from . import __version__
 from .db import initialize, connect
 from .seed import seed
@@ -60,12 +61,16 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
 
         async def on_sample(device, sample):
             app.state.samples_received += 1
+            await app.state.diagnostics.sample(device,sample)
+            if sample.get('read_ok') is False:
+                return
             await app.state.calibrations.sample(device, sample)
             await app.state.manager.sample(device, sample)
 
         app.state.source = SimSource(on_sample, config.get("signal", {}).get("sample_hz", 50)) if simulate else HardwareSource(on_sample, config, broadcast, ports)
         app.state.manager = SessionManager(path, app.state.source, broadcast, config)
         app.state.calibrations = CalibrationManager(app.state.manager)
+        app.state.diagnostics = DiagnosticViews(app.state.manager)
         app.state.crowd = Crowd(app.state.manager)
         monitor = asyncio.create_task(app.state.manager.monitor())
         calibration_monitor = asyncio.create_task(app.state.calibrations.monitor())
@@ -80,6 +85,7 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
             calibration_monitor.cancel()
             monitor.cancel()
             await asyncio.gather(monitor, calibration_monitor, return_exceptions=True)
+            await app.state.diagnostics.close_all()
             await app.state.calibrations.close()
             for state in list(app.state.manager.active.values()):
                 await app.state.manager.finish(state["set_id"], "disconnect")
@@ -100,6 +106,31 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     def health():
         return {"ok": True, "version": __version__, "devices_online": sum(d["online"] for d in devices()),
                 "simulate": simulate, "small_movement_demo": config.get("demo", {}).get("small_movement", False)}
+
+    @app.get("/diagnostics")
+    def diagnostic_page():
+        return FileResponse(static/'diagnostics.html')
+
+    @app.websocket("/diagnostics/live")
+    async def diagnostic_socket(socket: WebSocket):
+        device=socket.query_params.get('device','clip-01')
+        await socket.accept()
+        view=None
+        try:
+            view=await app.state.diagnostics.open(device,socket)
+            while True:
+                command=await socket.receive_text()
+                if command=='BUZZTEST':
+                    await app.state.source.test_buzzer(device)
+                    await socket.send_json({'control':'buzzer','message':'One-second test tone sent. Check for sound on D2.'})
+        except SessionError as error:
+            await socket.send_json({'connected':False,'message':error.message})
+            await socket.close(code=1008)
+        except (WebSocketDisconnect,RuntimeError):
+            pass
+        finally:
+            if view:
+                await app.state.diagnostics.close(device,view)
 
     @app.get("/api/devices")
     def device_list():

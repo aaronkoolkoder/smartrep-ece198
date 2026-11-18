@@ -33,7 +33,7 @@ LinkState modem={};
 #endif
 bool sensorOK=false;
 uint8_t failures=0, wifiState=0;
-uint32_t i2cErrors=0, nextSample=0, lastInfo=0, lastInit=0;
+uint32_t i2cErrors=0, nextSample=0, lastInfo=0, lastInit=0, lastRawSample=0;
 
 
 void row(uint8_t number, const char *text) {
@@ -67,7 +67,7 @@ bool displayCommand(char *cmd){
     if(reps<0) reps=0;
     if(reps>999999) reps=999999;
     if(samePerson && calibrating==wasCalibrating && reps>displayedReps) {
-      digitalWrite(BUZZER_PIN,HIGH);
+      tone(BUZZER_PIN,2000,120);
       buzzUntil=millis()+120;
     }
     displayedReps=reps;
@@ -156,10 +156,14 @@ void command(Stream &out,LinkState &link){
     }
     sensorOK=initSensor();
   }
+  else if(!strcmp(cmd,"BUZZTEST")){
+    tone(BUZZER_PIN,2000,1000);buzzUntil=millis()+1000;
+    out.println(F("{\"t\":\"info\",\"msg\":\"D2 tone test 1000ms\"}"));
+  }
   else if(!strcmp(cmd,"TEST")){
     row(0,"LCD test OK");
     row(1,sensorOK?"MPU OK / buzz D2":"MPU not found");
-    digitalWrite(BUZZER_PIN,HIGH);buzzUntil=millis()+120;
+    tone(BUZZER_PIN,2000,120);buzzUntil=millis()+120;
     identity(out,"info");
   }
   else if(!strcmp(cmd,"PING")){out.print(F("{\"t\":\"pong\",\"ms\":"));out.print(millis());out.println('}');}
@@ -243,7 +247,7 @@ void setup(){
   row(1,sensorOK?"MPU OK / connect":"MPU not found");
 }
 void loop(){
-  if(buzzUntil&&(int32_t)(millis()-buzzUntil)>=0){digitalWrite(BUZZER_PIN,LOW);buzzUntil=0;}
+  if(buzzUntil&&(int32_t)(millis()-buzzUntil)>=0){noTone(BUZZER_PIN);digitalWrite(BUZZER_PIN,LOW);buzzUntil=0;}
   pollLink(Serial,usb);
 #if defined(ARDUINO_UNOR4_MINIMA)
   pollLink(Serial1,modem);
@@ -256,10 +260,13 @@ void loop(){
     nextSample+=SAMPLE_US;
     if((int32_t)(micros()-nextSample)>=0)nextSample=micros()+SAMPLE_US;
     if(sensorOK)sample();
-    if(usb.streaming&&usb.diagnostic)rawSample(Serial);
+    if((uint32_t)(millis()-lastRawSample)>=100){
+      lastRawSample=millis();
+      if(usb.streaming&&usb.diagnostic)rawSample(Serial);
 #if defined(ARDUINO_UNOR4_MINIMA)
-    if(modem.streaming&&modem.diagnostic)rawSample(Serial1);
+      if(modem.streaming&&modem.diagnostic)rawSample(Serial1);
 #endif
+    }
   }
   statusLight();
 }

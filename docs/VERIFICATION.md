@@ -1,3 +1,24 @@
+# November 18 integration update
+
+- User confirmed the D2 buzzer's one-second 2 kHz test tone was audible after correcting
+  its shield connection. The same tone mechanism is used for counted-rep feedback.
+- The temporary six-axis input page is now integrated at `/diagnostics` in the main
+  server, accessible through Staff setup. It shares the bridge connection, reserves
+  the station, and releases it on close. It includes diagnostic CSV download and a
+  buzzer test button. Raw read failures are shown explicitly, not graphed as zeros.
+- **58 backend tests pass**, including raw WebSocket data, failed-read reporting,
+  exclusive station ownership/release, and diagnostic reconnect mode.
+- The current R4 firmware compiles and was uploaded (64,324 bytes flash, 5,740 bytes
+  global RAM). Browser check at 390×844 passes without JavaScript errors or horizontal
+  overflow; the current board reports failed raw reads, displayed honestly in the UI.
+- Earlier in this session the standalone 10 Hz checker received live changing values.
+  The later failed reads show the hardware path is not yet repeatably reliable.
+  The unexpected sensor identity and physical count/angle validation remain unresolved.
+- ESP32 antenna/wireless validation and rep-feedback during real validated movements
+  are still pending. Successful buzzer and graph checks do not establish those results.
+
+---
+
 # Current verification status
 
 Updated November 16, 2026. Automated software evidence and physical observations

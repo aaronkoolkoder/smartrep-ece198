@@ -26,6 +26,14 @@ open a temporary phone link/QR. Keep its Terminal window open and the laptop awa
 Close Arduino Serial Monitor. Wall adapters power the boards but do not replace
 the laptop server. ESP32U needs its external antenna; Wi-Fi is not yet physically verified.
 
+The permanent [live MPU diagnostics page](http://127.0.0.1:8000/diagnostics)
+is available through **Staff setup → Check live MPU inputs**. It shows six raw
+channels, raw bytes, pause/clear, diagnostic CSV download, and a **Test buzzer · D2**
+button. It uses the bridge's existing USB/Wi-Fi connection instead of a second
+serial reader. Close the page before calibration or exercise sets; the station is
+reserved while diagnostics are open. The D2 buzzer now uses a 2 kHz tone, verified
+by the user's audible test on November 18.
+
 Teacher calibration has live raw-input graphs. The connected MPU currently reports
 an unexpected identity: diagnostics may display changing inputs, but saving a
 calibration and counting real reps remain blocked. Do not present this as verified accuracy.
