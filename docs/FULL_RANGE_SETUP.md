@@ -16,3 +16,12 @@ database; they are not embedded in the firmware or committed to Git.
 
 Staff setup: patient 123129, demo PIN 0000, choose the exercise, perform three full
 movements, then save the reference. Close the diagnostics page before recording.
+
+## Row calibration observation
+
+The user reported the live counter reaching three cycles while reference saving
+still returned a retry error. The live counter is provisional; final validation
+can reject a different dominant signal or an incomplete return to the starting
+position. Recorded attempts include insufficient-cycle and finish-at-start errors.
+No successful row reference is claimed. At the user's request, the current logic
+is retained without further changes or movement tests.
