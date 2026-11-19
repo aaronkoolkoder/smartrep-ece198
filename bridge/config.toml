@@ -33,7 +33,7 @@ device_ws_path = "/device"
 mdns_name = "smartrep"   # → smartrep.local
 [calibration]
 reps_required = 3
-max_seconds = 30
+max_seconds = 90
 min_prominence_frac = 0.30
 min_cycle_s = 0.8
 min_ref_range_deg = 25

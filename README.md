@@ -60,17 +60,17 @@ laptop server on a reachable network.
 
 1. Plug the Arduino into the Mac with a USB data cable. Close Arduino Serial Monitor.
 2. In Finder, open the project folder and double-click **Start SmartRep.command**.
-3. The launcher starts the small-movement hardware mode, opens a phone link and
+3. The launcher starts normal full-range hardware mode, opens a phone link and
    displays a QR code. Keep its Terminal window open and the laptop awake.
 4. Use the link or QR on your phone. Press **Control+C** in Terminal to stop the
    processes started by the launcher. Each launch may create a new phone URL.
 
-For laptop-only use, double-click **start-smartrep-small-demo.command**; it does
+For laptop-only full-range use, double-click **start-smartrep-hardware.command**; it does
 not need Cloudflare. Open [SmartRep](http://127.0.0.1:8000/app).
 
 | Launcher | Purpose | Database |
 |---|---|---|
-| `Start SmartRep.command` | Small-movement hardware + phone link/QR | `bridge/smartrep-small-demo.db` |
+| `Start SmartRep.command` | Full-range hardware + phone link/QR | `bridge/smartrep-hardware.db` |
 | `start-smartrep-small-demo.command` | Small-movement hardware, local/LAN access | `bridge/smartrep-small-demo.db` |
 | `start-smartrep-hardware.command` | Normal-range hardware mode | `bridge/smartrep-hardware.db` |
 | `start-smartrep.command` | Five simulated stations and example activity | `bridge/smartrep-demo.db` |

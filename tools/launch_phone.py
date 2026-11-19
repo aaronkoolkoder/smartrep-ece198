@@ -31,12 +31,12 @@ def main():
     server = tunnel = None
     try:
         current = health()
-        if current and (current.get('simulate') or not current.get('small_movement_demo')):
+        if current and (current.get('simulate') or current.get('small_movement_demo')):
             print('Another SmartRep mode is using port 8000. Stop it with Control+C, then reopen this file.')
             return 1
         if not current:
-            server = subprocess.Popen([sys.executable, '-m', 'smartrep', '--small-movement-demo',
-                                       '--db', 'smartrep-small-demo.db'], cwd=ROOT / 'bridge')
+            server = subprocess.Popen([sys.executable, '-m', 'smartrep',
+                                       '--db', 'smartrep-hardware.db'], cwd=ROOT / 'bridge')
             for _ in range(60):
                 if health():
                     break
