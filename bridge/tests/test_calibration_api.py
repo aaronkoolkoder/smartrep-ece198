@@ -65,3 +65,33 @@ def test_start_failure_releases_station_and_records_failure(tmp_path):
         with connect(tmp_path/'start-failure.db') as db:
             row=db.execute('SELECT status,ended_at FROM calibration_runs').fetchone()
             assert row['status']=='failed' and row['ended_at']
+
+
+def test_cancel_calibration_releases_station_without_saving(tmp_path):
+    path=tmp_path/'cancel.db'
+    app=create_app(path,True)
+    with TestClient(app) as client:
+        with connect(path) as db:
+            references=[tuple(row) for row in db.execute('SELECT * FROM rep_references ORDER BY participant_id,exercise_id')]
+        identifier=client.post('/api/calibrations',json=BODY).json()['calibration_id']
+        result=client.post(f'/api/calibrations/{identifier}/cancel').json()
+        assert result['cancelled'] and not result['ok']
+        assert not app.state.manager.reserved
+        assert client.post(f'/api/calibrations/{identifier}/cancel').json()==result
+        assert client.post(f'/api/calibrations/{identifier}/done').json()==result
+        with connect(path) as db:
+            assert db.execute('SELECT status FROM calibration_runs WHERE id=?',(identifier,)).fetchone()[0]=='cancelled'
+            assert [tuple(row) for row in db.execute('SELECT * FROM rep_references ORDER BY participant_id,exercise_id')]==references
+        assert client.post('/api/calibrations',json=BODY).status_code==201
+
+
+def test_cancel_releases_station_even_if_transport_stop_fails(tmp_path):
+    app=create_app(tmp_path/'cancel-offline.db',True)
+    with TestClient(app) as client:
+        identifier=client.post('/api/calibrations',json=BODY).json()['calibration_id']
+        original=app.state.source.stop
+        async def offline(device):raise ConnectionError('Cable unplugged')
+        app.state.source.stop=offline
+        assert client.post(f'/api/calibrations/{identifier}/cancel').json()['cancelled']
+        assert not app.state.manager.reserved
+        app.state.source.stop=original

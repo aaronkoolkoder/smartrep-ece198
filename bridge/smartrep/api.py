@@ -260,6 +260,10 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     async def finish_calibration(identifier: int):
         return await app.state.calibrations.done(identifier)
 
+    @app.post("/api/calibrations/{identifier}/cancel")
+    async def cancel_calibration(identifier: int):
+        return await app.state.calibrations.cancel(identifier)
+
     @app.post("/api/sim/crowd")
     async def simulation_crowd(body: CrowdBody):
         if not simulate:

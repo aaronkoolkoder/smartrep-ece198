@@ -141,6 +141,8 @@ class CalibrationManager:
             return state["result"]
         manager=self.sessions
         async with manager.lock:
+            if state["result"] is not None:
+                return state["result"]
             await manager.source.stop(state["device"])
             manager.reserved.discard(state["device"])
             if hasattr(manager.source,"set_calibrating"):
@@ -162,6 +164,31 @@ class CalibrationManager:
             state["result"]=result
             await manager.show_display(state["device"],state["display_name"],state["progress"],
                                        'cal_saved' if result['ok'] else 'cal_error')
+            await manager.broadcast({"type":"calibration_done","calibration_id":identifier,**result},state["participant"])
+            return result
+
+    async def cancel(self,identifier):
+        manager=self.sessions
+        async with manager.lock:
+            state=self.recordings.get(identifier)
+            if state is None:
+                raise SessionError("CALIBRATION_NOT_FOUND","Calibration not found.",404)
+            if state["result"] is not None:
+                return state["result"]
+            result={"ok":False,"cancelled":True,"reason":"Calibration cancelled."}
+            # Mark finished before awaiting transport so late samples cannot enter it.
+            state["result"]=result
+            try:
+                await manager.source.stop(state["device"])
+            except (ConnectionError,OSError):
+                pass
+            finally:
+                manager.reserved.discard(state["device"])
+                if hasattr(manager.source,"set_calibrating"):
+                    manager.source.set_calibrating(state["device"],False)
+                with connect(manager.path) as db:
+                    db.execute("UPDATE calibration_runs SET ended_at=?,status='cancelled',result_json=? WHERE id=?",
+                        (utc_now(),json.dumps(result),identifier))
             await manager.broadcast({"type":"calibration_done","calibration_id":identifier,**result},state["participant"])
             return result
 
