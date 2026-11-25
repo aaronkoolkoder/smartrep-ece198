@@ -51,7 +51,7 @@ def main():
                                        '--protocol', 'http2', '--no-autoupdate'], stdout=log, stderr=log)
             url = None
             for _ in range(90):
-                match = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', log_path.read_text())
+                match = re.search(r'https://(?!api\.)(?:[a-z0-9]+-)+[a-z0-9]+\.trycloudflare\.com', log_path.read_text())
                 if match:
                     url = match.group() + '/app'
                     break
