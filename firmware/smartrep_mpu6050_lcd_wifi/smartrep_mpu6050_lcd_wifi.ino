@@ -20,7 +20,7 @@ hd44780_I2Cexp lcd;
 bool lcdReady=false;
 
 #define DEVICE_ID "clip-01"
-#define FW_VERSION "1.2.2"
+#define FW_VERSION "1.2.3"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
@@ -72,8 +72,8 @@ bool displayCommand(char *cmd){
         reps==displayedReps+1 && (!strcmp(quality,"good") || !strcmp(quality,"rushed") || !strcmp(quality,"slow"));
     bool calibrationReady=!strcmp(quality,"cal_ready") && !calibrationBeeped;
     if(repCompleted || calibrationReady) {
-      tone(BUZZER_PIN,2000,80);
-      buzzUntil=millis()+80;
+      tone(BUZZER_PIN,2000,120);
+      buzzUntil=millis()+120;
       if(calibrationReady) calibrationBeeped=true;
     }
     displayedReps=reps;
