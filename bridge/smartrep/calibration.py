@@ -33,8 +33,17 @@ class CalibrationManager:
             device = next((d for d in manager.devices() if d["id"] == station["device_id"] and d["online"]),None)
             if not device:
                 raise SessionError("DEVICE_OFFLINE","Station disconnected, ask staff.",503)
+            # A calibration left open (window closed, tab gone) must not lock the station:
+            # starting a new one replaces it. Active sets and diagnostics still block.
+            for identifier,state in list(self.recordings.items()):
+                if state["device"]==device["id"] and state["result"] is None:
+                    await self._abandon(identifier,state)
             if device["id"] in manager.active or device["id"] in manager.reserved:
                 raise SessionError("STATION_BUSY","Station is in use. Finish the current set or calibration first.")
+            if device.get("sensor_ok") is False and hasattr(manager.source,"refresh_sensor"):
+                # Re-check a flagged sensor so one glitch does not force diagnostic-only calibration.
+                await manager.source.refresh_sensor(device["id"])
+                device = next((d for d in manager.devices() if d["id"] == device["id"] and d["online"]),device)
             with connect(manager.path) as db:
                 identifier=db.execute("INSERT INTO calibration_runs(participant_id,exercise_id,device_id,started_at) VALUES (?,?,?,?)",
                     (participant,exercise,device['id'],utc_now())).lastrowid
@@ -85,8 +94,7 @@ class CalibrationManager:
                 if raw.get('diagnostic') or state['diagnostic']:
                     continue
                 sample = state["pipeline"].update(raw)
-                if sample["gap"]:
-                    raise CalibrationError("Sensor gap during calibration; check the cable and try again.")
+                # Dropout limits are enforced by the Calibrator (calibration.max_dropout_ms).
                 if sample["ready"]:
                     state["calibrator"].add(sample["ms"],sample["signals"])
                     # Lock the feedback axis after its first full cycle.
@@ -164,6 +172,28 @@ class CalibrationManager:
                                        'cal_saved' if result['ok'] else 'cal_error')
             await manager.broadcast({"type":"calibration_done","calibration_id":identifier,**result},state["participant"])
             return result
+
+    async def _abandon(self,identifier,state):
+        """Release a calibration without saving (caller holds the session lock)."""
+        manager=self.sessions
+        await manager.source.stop(state["device"])
+        manager.reserved.discard(state["device"])
+        if hasattr(manager.source,"set_calibrating"):
+            manager.source.set_calibrating(state["device"],False)
+        state["result"]={"ok":False,"reason":"Calibration cancelled.","cancelled":True}
+        with connect(manager.path) as db:
+            db.execute("UPDATE calibration_runs SET ended_at=?,status='cancelled',result_json=? WHERE id=?",
+                (utc_now(),json.dumps(state["result"]),identifier))
+
+    async def cancel(self,identifier):
+        state=self.recordings.get(identifier)
+        if state is None:
+            raise SessionError("CALIBRATION_NOT_FOUND","Calibration not found.",404)
+        if state["result"] is None:
+            async with self.sessions.lock:
+                if state["result"] is None:
+                    await self._abandon(identifier,state)
+        return {"ok":True,"cancelled":True}
 
     async def monitor(self):
         while True:

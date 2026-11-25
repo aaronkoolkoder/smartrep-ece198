@@ -2,6 +2,8 @@
 from dataclasses import asdict, dataclass
 import math
 from statistics import median, pvariance
+
+ANGLE_SIGNALS = ("pitch", "roll", "tilt")
 from .config import load_config
 
 
@@ -111,7 +113,9 @@ class Calibrator:
     def add(self, ms, signals):
         if self.samples and ms <= self.samples[-1][0]:
             raise CalibrationError("Sample timestamps must increase")
-        if self.samples and ms - self.samples[-1][0] > self.config["signal"]["max_gap_ms"]:
+        # Brief dropouts (the MPU re-initialising after an I2C glitch) leave a hole, not a fault.
+        tolerance = self.config["calibration"].get("max_dropout_ms", self.config["signal"]["max_gap_ms"])
+        if self.samples and ms - self.samples[-1][0] > tolerance:
             raise CalibrationError("Sensor gap during calibration; check the cable and try again.")
         if self.samples and signals.keys() != self.samples[0][1].keys():
             raise CalibrationError("Sensor channels changed during calibration")
@@ -129,15 +133,29 @@ class Calibrator:
         for key in self.samples[0][1]:
             values = [s[key] for _, s in self.samples]
             span = max(values) - min(values)
-            angle = key in ("pitch", "roll")
+            angle = key in ANGLE_SIGNALS
             floor = settings["min_ref_range_deg" if angle else "min_ref_range_g"]
             if span >= floor:
                 noise = settings["angle_noise_deg" if angle else "accel_noise_g"]
                 prefer = angle and span >= settings["prefer_angle_min_deg"]
-                candidates.append((prefer, pvariance(values) / noise ** 2, key, values))
+                # "tilt" (rotation from the start pose about any axis) ranks after pitch/roll,
+                # so movements that already calibrate on pitch or roll keep that signal.
+                candidates.append((prefer, key != "tilt", pvariance(values) / noise ** 2, key, values))
         if not candidates:
             raise CalibrationError("Movement range too small; check the sensor and try 3 full reps.")
-        _, _, signal, values = max(candidates)
+        candidates.sort(reverse=True)
+        # Angle signals are tried in order: a sensor mounted at an angle can make pitch or roll
+        # fold or split a rep, while tilt still sees one clean cycle per rep.
+        attempts = [c for c in candidates if c[3] in ANGLE_SIGNALS and c[0]] or candidates[:1]
+        first_error = None
+        for _, _, _, signal, values in attempts:
+            try:
+                return self._reference(signal, values, settings)
+            except CalibrationError as error:
+                first_error = first_error or error
+        raise first_error
+
+    def _reference(self, signal, values, settings):
         low, high = min(values), max(values)
         span = high - low
         direction = 1
@@ -179,7 +197,7 @@ class Calibrator:
         duration = median((b - a) / 1000 for a, b in zip(peak_times, peak_times[1:]))
         ref_bottom = low + median(valleys) * span if direction == 1 else high - median(valleys) * span
         ref_top = low + median(peaks) * span if direction == 1 else high - median(peaks) * span
-        return Reference(signal, "deg" if signal in ("pitch", "roll") else "g",
+        return Reference(signal, "deg" if signal in ANGLE_SIGNALS else "g",
                          min(ref_bottom, ref_top), max(ref_bottom, ref_top), duration, direction)
 
 

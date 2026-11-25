@@ -2,7 +2,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Literal
 from .config import load_config
@@ -124,7 +124,8 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
                     await app.state.source.test_buzzer(device)
                     await socket.send_json({'control':'buzzer','message':'One-second test tone sent. Check for sound on D2.'})
         except SessionError as error:
-            await socket.send_json({'connected':False,'message':error.message})
+            # The code lets the page tell "not plugged in" from "in use" and retry.
+            await socket.send_json({'connected':False,'message':error.message,'code':error.code,'simulate':simulate})
             await socket.close(code=1008)
         except (WebSocketDisconnect,RuntimeError):
             pass
@@ -260,6 +261,10 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     async def finish_calibration(identifier: int):
         return await app.state.calibrations.done(identifier)
 
+    @app.post("/api/calibrations/{identifier}/cancel")
+    async def cancel_calibration(identifier: int):
+        return await app.state.calibrations.cancel(identifier)
+
     @app.post("/api/sim/crowd")
     async def simulation_crowd(body: CrowdBody):
         if not simulate:
@@ -279,11 +284,17 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
         return FileResponse(Path(__file__).resolve().parents[1]/"static/sw.js",media_type="application/javascript",headers={"Cache-Control":"no-cache","Service-Worker-Allowed":"/"})
 
     @app.get("/station-qr.pdf", include_in_schema=False)
-    async def station_qr():
-        target=Path(__file__).resolve().parents[2]/"output/pdf/station_qr_codes.pdf"
-        if not target.exists():
-            raise SessionError("QR_NOT_GENERATED","Run tools/make_qr.py first.",404)
-        return FileResponse(target,media_type="application/pdf",filename="SmartRep_station_QR_codes.pdf")
+    def station_qr(request: Request):
+        # Codes are web links for the address this browser is using, so a
+        # phone camera opens them directly (loopback becomes the LAN address).
+        from fastapi.responses import Response
+        from .network import public_base_url
+        from .station_codes import build_pdf
+        base=public_base_url(request.query_params.get("base") or str(request.base_url),request.url.port or 8000)
+        with connect(path) as db:
+            stations=[dict(row) for row in db.execute("SELECT id,label FROM stations ORDER BY id")]
+        return Response(build_pdf(stations,base),media_type="application/pdf",
+                        headers={"Content-Disposition":'inline; filename="SmartRep_Station_Codes.pdf"'})
 
     # Expo's exported web build is an additional way to inspect the native
     # participant screens. The primary browser experience remains at /.

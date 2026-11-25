@@ -3,24 +3,11 @@ import asyncio
 import argparse
 import logging
 from pathlib import Path
-import socket
 import tomllib
 import qrcode
 import uvicorn
 from .api import create_app
-
-
-def local_addresses():
-    addresses = {"127.0.0.1"}
-    try:
-        addresses.update(socket.gethostbyname_ex(socket.gethostname())[2])
-        # UDP connect chooses a default interface without sending a packet.
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect(("192.0.2.1", 80))
-            addresses.add(probe.getsockname()[0])
-    except OSError:
-        pass
-    return sorted(addresses, key=lambda ip: (ip.startswith("127."), ip))
+from .network import local_addresses
 
 
 def main():

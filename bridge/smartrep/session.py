@@ -102,9 +102,13 @@ class SessionManager:
                 # Simulator references cannot silently authorize real hardware.
                 if not ref or (ref["device_id"] and ref["device_id"].startswith("sim-") != device_id.startswith("sim-")):
                     raise SessionError("NEEDS_CALIBRATION", "Ask staff to set up this exercise first.",422)
+                if device.get('sensor_ok') is False and hasattr(self.source,'refresh_sensor'):
+                    # A single I2C glitch flags the sensor; re-check before refusing the set.
+                    await self.source.refresh_sensor(device_id)
+                    device = next((d for d in self.devices() if d["id"] == device_id and d["online"]),device)
                 if device.get('sensor_ok') is False:
                     raise SessionError('SENSOR_NOT_READY','Sensor read failed. Check the connection before starting.',422)
-                available_signals = {'pitch','roll','ax','ay','az'} if device['units'].startswith('mpu6050') else {'x','y','z'}
+                available_signals = {'pitch','roll','tilt','ax','ay','az'} if device['units'].startswith('mpu6050') else {'x','y','z'}
                 if ref['signal'] not in available_signals:
                     raise SessionError("NEEDS_CALIBRATION", "Sensor changed. Calibrate this exercise again.",422)
                 reference = Reference(**{k:ref[k] for k in ("signal","units","ref_low","ref_high","ref_duration_s","direction")})
@@ -266,5 +270,5 @@ class SessionManager:
                 if disconnected:
                     if now-state["last_sample"] > self.config["sets"]["disconnect_grace_s"]:
                         await self.finish(state["set_id"],"disconnect")
-                elif now-state["last_rep"] > self.config["sets"]["idle_timeout_s"]:
+                elif self.config["sets"]["idle_timeout_s"] and now-state["last_rep"] > self.config["sets"]["idle_timeout_s"]:
                     await self.finish(state["set_id"],"idle")

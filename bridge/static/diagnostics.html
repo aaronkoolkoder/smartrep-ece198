@@ -1,16 +1,148 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartRep · Live MPU inputs</title>
-<style>*{box-sizing:border-box}body{margin:0;background:#f3f2f7;color:#262435;font:16px/1.5 system-ui}main{max-width:1100px;margin:auto;padding:24px}h1{font-size:30px;letter-spacing:-1px;margin:0}header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}.badge{padding:8px 14px;border-radius:30px;background:#e2e0eb;font-weight:600;font-size:13px}.online{background:#d5efdf;color:#14623a}.warning{background:#fff1d5;color:#77531c;border-radius:16px;padding:14px 18px;font-size:14px;margin:20px 0}.card{background:white;border-radius:22px;padding:20px;margin:18px 0;box-shadow:0 4px 20px #30204a06}h2{font-size:20px;margin:0}.sub{font-size:13px;color:#767184;margin:4px 0 12px}canvas{width:100%;height:230px;display:block}.numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.number{padding:14px;border-radius:14px;background:#f7f6fa}.number b{display:block;font-size:25px;font-variant-numeric:tabular-nums}.x{color:#3775cf}.y{color:#148459}.z{color:#d34f65}button,a{border:0;border-radius:12px;padding:12px 18px;background:#e6dff7;color:#322347;font:inherit;cursor:pointer}footer{font-size:12px;color:#777}#bytes{overflow-wrap:anywhere}button:focus-visible{outline:3px solid #3775cf}</style>
-<main><header><div><h1>Live MPU inputs</h1><div class="sub">SmartRep · USB hardware diagnostics · raw register counts</div></div><a href="/app" id="back">Back to app</a><span class="badge" id="status" role="status">Connecting…</span></header>
-<div class="warning" id="warning">Checking sensor identity…</div>
-<div style="display:flex;gap:12px;flex-wrap:wrap"><button id="buzz">Test buzzer · D2</button><button id="pause">Pause graph</button><button id="clear">Clear graph</button><button id="download">Download CSV</button></div>
-<p id="test-result" role="status" class="sub"></p><section class="card"><h2>Acceleration</h2><p class="sub">X <span class="x">● blue</span> · Y <span class="y">● green</span> · Z <span class="z">● red</span></p><canvas id="accel" aria-label="Live raw acceleration graph"></canvas><div class="numbers"><div class="number x">X<b id="ax">—</b></div><div class="number y">Y<b id="ay">—</b></div><div class="number z">Z<b id="az">—</b></div></div></section>
-<section class="card"><h2>Gyroscope</h2><p class="sub">Raw counts; each graph scales independently. Last 10 seconds.</p><canvas id="gyro" aria-label="Live raw gyroscope graph"></canvas><div class="numbers"><div class="number x">X<b id="gx">—</b></div><div class="number y">Y<b id="gy">—</b></div><div class="number z">Z<b id="gz">—</b></div></div></section>
-<footer><div id="details">Waiting for readings…</div><div id="bytes"></div><p>This page temporarily reserves the MPU station. Close it before starting a set or teacher calibration. CSV contains diagnostic inputs, not validated reps.</p></footer></main>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f1f2fa"><title>SmartRep Diagnostics</title><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/clay.css"><style>
+[hidden]{display:none!important}
+.diag-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+.diag-toolbar .secondary{min-height:40px;padding:8px 14px;font-size:14px}
+.diag-toolbar .secondary:disabled{opacity:.45;cursor:not-allowed}
+.diag-toolbar .secondary.active{background:var(--dp-color-surface-compare)}
+.status-pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;background:var(--dp-color-ground);color:var(--muted);box-shadow:inset 0 0 0 1px #3831390f}
+.status-pill:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.75}
+.status-pill.live{background:var(--dp-color-surface-support);color:#2c5a45}
+.status-pill.waiting{background:var(--dp-color-surface-warm);color:#6a4d0f}
+.status-pill.busy{background:var(--dp-color-surface-cool);color:#2d5578}
+.status-pill.error{background:#f6d3dc;color:#7a2741}
+.status-pill.sim{background:var(--dp-color-surface-compare);color:var(--ink)}
+.diag-empty{display:grid;justify-items:center;text-align:center;padding:56px 24px;gap:6px}
+.empty-icon{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;background:var(--dp-color-surface-compare);margin-bottom:10px}
+.empty-icon svg{width:28px;height:28px;fill:none;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.diag-empty h2{font-size:22px;margin:0}
+.diag-empty .hint{margin:0;max-width:540px}
+.diag-checklist{list-style:none;margin:20px 0 0;padding:0;display:grid;gap:10px;text-align:left}
+.diag-checklist li{position:relative;padding-left:26px;font-size:14px;color:var(--ink)}
+.diag-checklist li:before{content:"";position:absolute;left:3px;top:5px;width:10px;height:5px;border-left:2px solid #51415c;border-bottom:2px solid #51415c;transform:rotate(-45deg)}
+.diag-command{margin-top:20px;display:grid;gap:8px;justify-items:center}
+.diag-command span{font-style:italic;color:var(--muted);font-size:14px}
+.diag-command code,.bytes-card code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.diag-command code{font-size:14px;background:var(--dp-color-ground);padding:8px 12px;border-radius:8px;box-shadow:inset 0 0 0 1px #3831390d}
+.diag-banner{padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;margin-bottom:16px;background:var(--dp-color-surface-warm);color:#6a4d0f}
+.diag-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.diag-stat{background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--clay-tray);display:grid;gap:2px;min-width:0}
+.diag-stat span{font-size:13px;color:var(--muted);font-weight:500}
+.diag-stat strong{font-size:18px;font-weight:650;overflow-wrap:anywhere}
+.graph-card{margin-bottom:16px;padding:20px 24px}
+.graph-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:10px;flex-wrap:wrap}
+.graph-top h2{font-size:18px;margin:0}
+.graph-top .hint{font-size:13px;margin:2px 0 0}
+.axis-values{display:flex;gap:8px;flex-wrap:wrap}
+.axis{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:var(--dp-color-ground);font-size:13px;font-weight:600;color:var(--muted)}
+.axis i{width:8px;height:8px;border-radius:50%}
+.axis b{color:var(--ink);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.axis.x i{background:#3478df}.axis.y i{background:#199564}.axis.z i{background:#d85665}
+canvas{display:block;width:100%;height:220px}
+.bytes-card{padding:14px 20px}
+.bytes-card summary{cursor:pointer;font-weight:600;font-size:14px}
+.bytes-card code{display:block;margin-top:10px;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.diag-note{font-size:13px;margin-top:18px}
+@media(max-width:760px){.diag-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.page-heading>.status-pill{align-self:flex-start}.graph-card{padding:16px}canvas{height:180px}.diag-empty{padding:40px 18px}}
+</style></head>
+<body>
+<div class="shell"><aside class="sidebar"><div class="brand-row"><a class="brand" href="/" aria-label="SmartRep home"><span class="brand-icon">s<span>r</span></span>smartrep<span class="brand-dot">.</span></a></div><nav aria-label="Main navigation"><a href="/app"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg></span><span class="nav-label">My Exercises</span></a><a href="/dashboard"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="8" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="6" rx="1.5"/></svg></span><span class="nav-label"><span class="label-full">Instructor Dashboard</span><span class="label-short">Dashboard</span></span></a><a href="/app#staff" class="active"><span aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><span class="nav-label"><span class="label-full">Staff Calibration</span><span class="label-short">Calibration</span></span></a></nav><div class="sidebar-footer"><div class="sidebar-bottom"><span class="connection-dot"></span><span id="connection-label">Connecting…</span><p>ECE 198 Prototype</p></div></div></aside>
+<div class="main-shell"><header class="topbar"><div class="breadcrumb">Staff Calibration <span>/</span> Live Sensor Inputs</div><div class="topbar-right"><span class="mode-badge" id="mode-badge">Hardware Mode</span></div></header>
+<main id="content">
+<div class="date-label">USB Hardware Diagnostics</div>
+<div class="page-heading"><div><h1>Live Sensor Inputs</h1><p class="hint">Raw MPU6050 Readings From the Station</p></div><span class="status-pill" id="status" role="status">Connecting…</span></div>
+<div class="diag-toolbar" id="toolbar" hidden><button class="secondary" id="buzz" disabled><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>Test Buzzer</button><button class="secondary" id="pause" disabled><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg><span id="pause-label">Pause</span></button><button class="secondary" id="clear" disabled><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M7 7l1 13h8l1-13M9 7V4h6v3"/></svg>Clear</button><button class="secondary" id="download" disabled><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download CSV</button></div>
+<section class="panel diag-empty" id="view-empty"><div class="empty-icon" id="empty-icon"></div><h2 id="empty-title">Connecting to the Station</h2><p class="hint" id="empty-hint">Looking for the Arduino</p><div id="empty-extra"></div></section>
+<div id="view-live" hidden>
+<div class="diag-banner" id="banner" hidden></div>
+<div class="diag-stats"><div class="diag-stat"><span>Readings</span><strong id="stat-frames">0</strong></div><div class="diag-stat"><span>Sensor</span><strong id="stat-sensor">—</strong></div><div class="diag-stat"><span>LCD</span><strong id="stat-lcd">—</strong></div><div class="diag-stat"><span>Port</span><strong id="stat-port">—</strong></div></div>
+<section class="panel graph-card"><div class="graph-top"><div><h2>Acceleration</h2><p class="hint">Raw Counts, Last 10 Seconds</p></div><div class="axis-values"><span class="axis x"><i></i>X<b id="ax">—</b></span><span class="axis y"><i></i>Y<b id="ay">—</b></span><span class="axis z"><i></i>Z<b id="az">—</b></span></div></div><canvas id="accel" aria-label="Live acceleration graph"></canvas></section>
+<section class="panel graph-card"><div class="graph-top"><div><h2>Gyroscope</h2><p class="hint">Raw Counts, Last 10 Seconds</p></div><div class="axis-values"><span class="axis x"><i></i>X<b id="gx">—</b></span><span class="axis y"><i></i>Y<b id="gy">—</b></span><span class="axis z"><i></i>Z<b id="gz">—</b></span></div></div><canvas id="gyro" aria-label="Live gyroscope graph"></canvas></section>
+<details class="panel bytes-card"><summary>Raw Register Bytes</summary><code id="bytes">—</code></details>
+</div>
+<p class="hint diag-note" id="diag-note" hidden>This Page Reserves the Station While Open — Close It Before Starting a Set or Calibration</p>
+</main></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
 <script>
-let samples=[],recording=[],paused=false,lastTime=null,leaving=false,activeSocket=null;
-const $=id=>document.getElementById(id),colors=['#3775cf','#148459','#d34f65'];
-function plot(id,keys){let c=$(id),ratio=devicePixelRatio||1,w=c.clientWidth,h=230;c.width=w*ratio;c.height=h*ratio;let ctx=c.getContext('2d');ctx.scale(ratio,ratio);if(!samples.length)return;const vals=samples.flatMap(s=>keys.map(k=>s[k]));let lo=Math.min(...vals),hi=Math.max(...vals);let margin=Math.max(100,(hi-lo)*.12);lo-=margin;hi+=margin;ctx.font='11px system-ui';for(let i=0;i<5;i++){let y=18+i*(h-42)/4;ctx.strokeStyle='#eceaf0';ctx.beginPath();ctx.moveTo(52,y);ctx.lineTo(w-8,y);ctx.stroke();ctx.fillStyle='#837d8e';ctx.fillText(Math.round(hi-i*(hi-lo)/4),0,y+4)}const end=samples.at(-1).time;keys.forEach((k,j)=>{ctx.strokeStyle=colors[j];ctx.lineWidth=2;ctx.beginPath();samples.forEach((s,i)=>{let x=52+(w-60)*(1-(end-s.time)/10),y=18+(h-42)*(hi-s[k])/(hi-lo);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()});ctx.fillStyle='#837d8e';ctx.fillText('−10 s',52,h-2);ctx.fillText('now',w-32,h-2)}
+'use strict';
+const $=id=>document.getElementById(id);
+const device=new URLSearchParams(location.search).get('device')||'clip-01';
+const colors=['#3478df','#199564','#d85665'],AXES=['ax','ay','az','gx','gy','gz'];
+const icons={
+  link:'<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+  usb:'<svg viewBox="0 0 24 24"><path d="M9 3h6v5H9zM7 8h10v5a5 5 0 0 1-10 0zM12 18v3"/></svg>',
+  busy:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>',
+  sim:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  alert:'<svg viewBox="0 0 24 24"><path d="M12 4 3 20h18z"/><path d="M12 10v4M12 17h.01"/></svg>'};
+let samples=[],recording=[],paused=false,lastTime=null,lastSampleAt=0,socket=null,retryTimer=null,leaving=false,live=false,lastCode=null;
+
+function toast(text){const t=$('toast');t.textContent=text;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,4000)}
+function setStatus(kind,label){const pill=$('status');pill.className='status-pill '+kind;pill.textContent=label;$('connection-label').textContent=label;document.querySelector('.connection-dot').classList.toggle('online',kind==='live')}
+function setControls(){$('toolbar').hidden=!live&&!recording.length;$('diag-note').hidden=!live;$('buzz').disabled=!live;$('pause').disabled=!live;$('clear').disabled=!recording.length;$('download').disabled=!recording.length}
+function banner(text){$('banner').hidden=!text;$('banner').textContent=text||''}
+function showEmpty(icon,title,hint,extra=''){live=false;$('view-live').hidden=true;$('view-empty').hidden=false;$('empty-icon').innerHTML=icons[icon];$('empty-title').textContent=title;$('empty-hint').textContent=hint;$('empty-extra').innerHTML=extra;setControls()}
+function showLive(){if(!live){live=true;$('view-empty').hidden=true;$('view-live').hidden=false;requestAnimationFrame(render)}setControls()}
+const checklist=items=>`<ul class="diag-checklist">${items.map(item=>`<li>${item}</li>`).join('')}</ul>`;
+function retry(ms){clearTimeout(retryTimer);retryTimer=setTimeout(connect,ms)}
+
+const states={
+  DEVICE_OFFLINE(){setStatus('waiting','Waiting for Arduino');showEmpty('usb','Plug In the Station','SmartRep Connects Automatically When the Arduino Is Plugged In by USB',checklist(['Close Arduino Serial Monitor','Use a Data-Capable USB Cable','Upload the SmartRep Firmware to the Board']));retry(2000)},
+  STATION_BUSY(){setStatus('busy','Station In Use');showEmpty('busy','Station In Use','Finish the Current Set or Calibration — This Page Reconnects Automatically');retry(3000)},
+  DIAGNOSTICS_UNAVAILABLE(){setStatus('error','Unsupported Firmware');showEmpty('alert','Unsupported Sensor Firmware','Upload the MPU6050 SmartRep Firmware to View Live Inputs');retry(5000)},
+  SIMULATION(){setStatus('sim','Simulation Mode');$('mode-badge').textContent='Simulation Mode';showEmpty('sim','Hardware Mode Required','Live Sensor Inputs Need a Real Arduino','<div class="diag-command"><span>Stop the Server With Control+C, Then Run</span><code>python -m smartrep --db smartrep-hardware.db</code></div>')}
+};
+
+function connect(){
+  clearTimeout(retryTimer);if(leaving)return;lastCode=null;
+  const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/diagnostics/live?device=${encodeURIComponent(device)}`);socket=ws;
+  ws.onopen=()=>{if(!live)setStatus('','Connecting…')};
+  ws.onmessage=event=>{
+    let s;try{s=JSON.parse(event.data)}catch{return}
+    if(s.control==='buzzer'){toast('Test Tone Sent — Listen for the Buzzer');return}
+    if(s.connected===false&&s.code){lastCode=s.simulate?'SIMULATION':s.code;return}
+    showLive();
+    $('stat-frames').textContent=(s.frames||0).toLocaleString();
+    $('stat-sensor').textContent=s.sensor_ok===false?'Check Wiring':s.sensor_ok?'OK':'—';
+    $('stat-lcd').textContent=s.lcd_ok?'Detected':s.lcd_ok===false?'Not Detected':'—';
+    $('stat-port').textContent=s.port?String(s.port).split('/').pop():'—';
+    if(s.read_error){setStatus('error','Read Error');banner('Sensor Read Failed — Check Power and Signal Connections');for(const k of AXES)$(k).textContent='—';return}
+    if(!s.sample||s.sample.time===lastTime)return;
+    lastTime=s.sample.time;lastSampleAt=Date.now();
+    setStatus('live','Live');banner(s.sensor_ok===false?'Sensor Reported a Problem — Readings May Be Unreliable':'');
+    recording.push(s.sample);if(recording.length>36000)recording.shift();
+    for(const k of AXES)$(k).textContent=Number(s.sample[k]).toLocaleString();
+    $('bytes').textContent=(s.sample.bytes||[]).map(v=>v.toString(16).padStart(2,'0')).join(' ')||'—';
+    setControls();
+    if(paused)return;
+    samples.push(s.sample);samples=samples.filter(v=>s.sample.time-v.time<=10);render()};
+  ws.onclose=event=>{
+    if(leaving||socket!==ws)return;
+    if(event.code===1008&&states[lastCode])return states[lastCode]();
+    setStatus('waiting','Reconnecting…');if(live)banner('Connection Lost — Reconnecting');retry(2000)};
+}
+
+function plot(id,keys){
+  const canvas=$(id);if(!canvas||!canvas.clientWidth)return;
+  const ratio=devicePixelRatio||1,w=canvas.clientWidth,h=canvas.clientHeight||220;
+  canvas.width=w*ratio;canvas.height=h*ratio;const ctx=canvas.getContext('2d');ctx.scale(ratio,ratio);
+  ctx.font='11px "Claymorphism Instrument", system-ui, sans-serif';
+  const left=56,right=8,top=10,bottom=22,plotH=h-top-bottom;
+  if(!samples.length){ctx.fillStyle='#9a91a0';ctx.fillText('Waiting for Readings…',left,h/2);return}
+  const values=samples.flatMap(s=>keys.map(k=>s[k]));let lo=Math.min(...values),hi=Math.max(...values);
+  const margin=Math.max(100,(hi-lo)*.12);lo-=margin;hi+=margin;
+  for(let i=0;i<5;i++){const y=top+i*plotH/4;ctx.strokeStyle='#ece8f0';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(w-right,y);ctx.stroke();ctx.fillStyle='#8c8392';ctx.textAlign='right';ctx.fillText(Math.round(hi-i*(hi-lo)/4).toLocaleString(),left-10,y+4)}
+  ctx.textAlign='left';const end=samples.at(-1).time;
+  keys.forEach((k,j)=>{ctx.strokeStyle=colors[j];ctx.lineWidth=2;ctx.lineJoin='round';ctx.beginPath();samples.forEach((s,i)=>{const x=left+(w-left-right)*(1-(end-s.time)/10),y=top+plotH*(hi-s[k])/(hi-lo);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()});
+  ctx.fillStyle='#8c8392';ctx.fillText('10 s Ago',left,h-4);ctx.textAlign='right';ctx.fillText('Now',w-right,h-4)}
 function render(){plot('accel',['ax','ay','az']);plot('gyro',['gx','gy','gz'])}
-function connect(){const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/diagnostics/live`);activeSocket=ws;ws.onmessage=e=>{let s=JSON.parse(e.data);if(s.control==='buzzer'){$('test-result').textContent=s.message;return;}$('status').textContent=s.connected?s.message:'Arduino disconnected';$('status').classList.toggle('online',s.connected&&!s.read_error);$('warning').textContent=s.sensor_ok?'Connected board is configured as MPU6050. Raw counts are shown; calibrate in the app before counting reps.':'Sensor read failed. Check power and signal connections.';$('details').textContent=`${s.frames||0} readings · ${s.port||''} · LCD: ${s.lcd_ok?'detected':'not confirmed'}`;if(s.read_error){for(const k of ['ax','ay','az','gx','gy','gz'])$(k).textContent='—';return}if(!s.sample||s.sample.time===lastTime)return;lastTime=s.sample.time;recording.push(s.sample);if(recording.length>36000)recording.shift();if(paused)return;samples.push(s.sample);samples=samples.filter(v=>s.sample.time-v.time<=10);for(const k of ['ax','ay','az','gx','gy','gz'])$(k).textContent=s.sample[k];$('bytes').textContent='Register bytes: '+s.sample.bytes.map(v=>v.toString(16).padStart(2,'0')).join(' ');render()};ws.onclose=e=>{if(leaving)return;if(e.code===1008){$('warning').textContent='Close this page to release the station. If it is busy, finish its current activity, then reload.';return}$('status').textContent='Reconnecting…';setTimeout(connect,2000)}}
-$('buzz').onclick=()=>{if(activeSocket?.readyState===1){activeSocket.send('BUZZTEST');$('test-result').textContent='Sending D2 tone test…'}else $('test-result').textContent='Connect the station first.'};$('back').onclick=()=>{leaving=true;activeSocket?.close()};$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'Resume graph':'Pause graph'};$('clear').onclick=()=>{samples=[];recording=[];render()};$('download').onclick=()=>{let keys=['time','ax','ay','az','gx','gy','gz'],csv=[keys.join(','),...recording.map(s=>keys.map(k=>s[k]).join(','))].join('\n'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),a=document.createElement('a');a.href=url;a.download='mpu-raw-diagnostic.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};window.onresize=render;connect();
-</script></html>
+
+$('buzz').onclick=()=>{if(socket?.readyState===1){socket.send('BUZZTEST');toast('Sending Test Tone…')}};
+$('pause').onclick=()=>{paused=!paused;$('pause-label').textContent=paused?'Resume':'Pause';$('pause').classList.toggle('active',paused)};
+$('clear').onclick=()=>{samples=[];recording=[];render();setControls()};
+$('download').onclick=()=>{const keys=['time',...AXES],csv=[keys.join(','),...recording.map(s=>keys.map(k=>s[k]).join(','))].join('\n'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv'})),a=document.createElement('a');a.href=url;a.download=`smartrep-${device}-raw-inputs.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+addEventListener('resize',render);
+addEventListener('pagehide',()=>{leaving=true;socket?.close()});
+setInterval(()=>{if(live&&lastSampleAt&&Date.now()-lastSampleAt>3000){setStatus('waiting','No Readings');banner('No Readings — Check the USB Cable')}},1000);
+showEmpty('link','Connecting to the Station','Looking for the Arduino');
+fetch('/api/health').then(r=>r.json()).then(health=>{if(health.simulate)return states.SIMULATION();$('mode-badge').textContent=health.small_movement_demo?'Small Movement Demo':'Hardware Mode';connect()}).catch(()=>{setStatus('waiting','Reconnecting…');retry(2000)});
+</script></body></html>

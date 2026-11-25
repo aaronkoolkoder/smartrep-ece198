@@ -38,6 +38,8 @@ min_prominence_frac = 0.30
 min_cycle_s = 0.8
 min_ref_range_deg = 25
 min_ref_range_g = 0.25
+# Calibration tolerates sensor dropouts up to this long (loose I2C wiring re-initialising the MPU).
+max_dropout_ms = 600
 # Noise scales make angle and acceleration variances comparable.
 angle_noise_deg = 1.0
 accel_noise_g = 0.02
@@ -52,7 +54,8 @@ rushed_max_s = 1.2
 slow_min_s = 8.0
 min_rep_s = 0.6
 [sets]
-idle_timeout_s = 8
+# 0 = never end a set for inactivity; it ends on Finish Set or a lost connection.
+idle_timeout_s = 0
 disconnect_grace_s = 20
 [status]
 form_check_frac = 0.30

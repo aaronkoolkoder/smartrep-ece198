@@ -51,7 +51,7 @@ def test_sensor_gap_and_channel_change_fail():
     cal = Calibrator()
     cal.add(0,{'pitch':0})
     with pytest.raises(CalibrationError,match='Sensor gap'):
-        cal.add(500,{'pitch':10})
+        cal.add(1500,{'pitch':10})
     with pytest.raises(CalibrationError,match='channels changed'):
         cal.add(20,{'roll':10})
 

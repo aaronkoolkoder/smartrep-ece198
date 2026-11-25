@@ -87,6 +87,10 @@ class HardwareSource:
                     entry['online']=True
                 await self._status(device)
             if kind=='s':
+                if entry.get('sensor_ok') is False and msg.get('read_ok') is not False and not msg.get('diagnostic'):
+                    # Calibrated samples only stream when the board's sensor is working again.
+                    entry['sensor_ok']=True
+                    await self._status(device)
                 raw=int(msg['ms'])
                 clock=self.clocks.setdefault(device,{'raw':raw,'offset':0,'last':raw})
                 if raw<clock['raw']:
@@ -125,6 +129,20 @@ class HardwareSource:
 
     async def test_buzzer(self,device):
         await self._send(device,'BUZZTEST')
+
+    async def refresh_sensor(self,device,timeout=1.5):
+        """After a read failure the firmware re-initialises the MPU but never says it recovered;
+        its HELLO reply carries the current sensor state, so ask and wait briefly."""
+        entry=self.entries.get(device)
+        if not entry or not entry['online']:
+            return
+        try:
+            await self._send(device,'HELLO')
+        except Exception:
+            return
+        deadline=time.monotonic()+timeout
+        while time.monotonic()<deadline and entry.get('sensor_ok') is False:
+            await asyncio.sleep(.05)
 
     async def start_diagnostics(self,device):
         await self._send(device,'DIAGSTART')
@@ -206,7 +224,8 @@ class HardwareSource:
                     await entry['close']()
                     continue
                 try:
-                    await self._send(device,'PING')
+                    # HELLO also reports sensor health, so a recovered sensor clears its failure flag.
+                    await self._send(device,'HELLO' if entry.get('sensor_ok') is False else 'PING')
                 except Exception:
                     await self.disconnected(device,entry['token'])
 
