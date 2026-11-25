@@ -12,7 +12,8 @@ def test_live_websocket_set_finish_and_reconnect(tmp_path):
     app = create_app(tmp_path/'live.db',True)
     with TestClient(app) as client:
         assert client.get('/api/participants/123129/today').json()['dose']
-        assert len(client.get('/api/participants/123129/stations/db-5lb/exercises').json()) == 3
+        exercises=client.get('/api/participants/123129/stations/db-5lb/exercises').json()
+        assert {exercise['exercise_id'] for exercise in exercises} == {'bicep-curl','hammer-curl','bent-over-row','lateral-raise'}
         assert client.get('/api/participants/123129/stations/db-3lb/exercises').json() == []
         with client.websocket_connect('/ws?participant=123129') as socket:
             assert socket.receive_json()['type'] == 'snapshot'

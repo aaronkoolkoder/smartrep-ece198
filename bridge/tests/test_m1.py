@@ -18,9 +18,9 @@ def test_startup_seed_health_and_restart(tmp_path):
             assert client.get("/api/stations/db-5lb").json()["device"]["id"] == "sim-02"
     with connect(path) as db:
         assert db.execute("SELECT count(*) FROM participants").fetchone()[0] == 5
-        assert db.execute("SELECT count(*) FROM exercises").fetchone()[0] == 10
+        assert db.execute("SELECT count(*) FROM exercises").fetchone()[0] == 11
         assert db.execute("SELECT count(*) FROM sessions").fetchone()[0] == 3
-        assert db.execute("SELECT count(*) FROM rep_references").fetchone()[0] == 20
+        assert db.execute("SELECT count(*) FROM rep_references").fetchone()[0] == 25
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
 
 

@@ -13,6 +13,7 @@ EXERCISES = [
     ("bicep-curl", "Bicep curl", "pull", "dumbbell"),
     ("hammer-curl", "Hammer curl", "pull", "dumbbell"),
     ("bent-over-row", "Bent-over row", "pull", "dumbbell"),
+    ("lateral-raise", "Lateral raise", "mobility", "dumbbell"),
     ("shoulder-press", "Shoulder press", "push", "dumbbell"),
     ("front-raise", "Front raise", "mobility", "dumbbell"),
     ("goblet-squat", "Goblet squat", "squat", "kettlebell"),
@@ -38,7 +39,7 @@ def seed(path, simulate=False, device_mapping=None):
             db.execute("UPDATE stations SET device_id=? WHERE id=?", (device, station[0]))
         db.executemany("INSERT OR IGNORE INTO exercises VALUES (?, ?, ?, ?)", EXERCISES)
         for participant, load in [("123129", 5), ("204417", 3), ("311802", 3), ("118560", 8), ("150093", 5)]:
-            for exercise in ["bicep-curl", "hammer-curl", "bent-over-row", "wall-push-up"]:
+            for exercise in ["bicep-curl", "hammer-curl", "bent-over-row", "lateral-raise", "wall-push-up"]:
                 db.execute("INSERT OR IGNORE INTO doses VALUES (?, ?, 2, 10, 20, ?)",
                            (participant, exercise, None if exercise == "wall-push-up" else load))
                 # References are specifically associated with simulated devices.
