@@ -44,6 +44,7 @@ class RepDetector:
         self.start_ms = self.departure_ms = None
         self.peak = 0
         self.crossed_top = False
+        self.top_since = None
 
     def update(self, ms, value):
         if not math.isfinite(value):
@@ -70,13 +71,23 @@ class RepDetector:
                 self.departure_ms = None
             return None
         self.peak = max(self.peak, p)
-        self.crossed_top |= p >= self.settings["top_line"]
+        if p>=self.settings["top_line"]:
+            if self.top_since is None:
+                self.top_since=ms
+            if ms-self.top_since>=self.settings.get("top_hold_ms",100):
+                self.crossed_top=True
+        else:
+            self.top_since=None
         if p > bottom:
             return None
         start, peak, full = self.start_ms, self.peak, self.crossed_top
         self.start_ms = self.departure_ms = None
         self.peak = 0
         self.crossed_top = False
+        self.top_since = None
+        duration = (ms-start)/1000
+        if duration<self.settings.get("min_motion_s",.35):
+            return None
         # Debounce between completed attempts, not by time spent above the top.
         if self.last_completion is not None and (ms - self.last_completion) / 1000 < self.settings["min_rep_s"]:
             return None

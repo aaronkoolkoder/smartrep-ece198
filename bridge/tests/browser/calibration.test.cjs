@@ -95,3 +95,18 @@ test('a late Save response cannot clear the ID of a newer calibration',async()=>
   await pending;
   assert.equal(b.run('state.calibrationId'),99);
 });
+
+
+test('short attempts and duplicate events do not beep or inflate the live counters',()=>{
+  const b=browser();
+  for(const id of ['#rep-count','#good-count','#short-count','#rushed-count','#rep-feedback','#rom-count'])
+    b.nodes.set(id,{textContent:'',classList:{toggle(){}}});
+  b.run("state.health={simulate:true};state.live={set_id:1,reps_completed:0};globalThis.beeps=0;beep=()=>globalThis.beeps++");
+  b.run("onRep({set_id:1,index:1,count:0,quality:'short',rom:30,rom_units:'deg'})");
+  assert.equal(b.run('beeps'),0);
+  b.run("onRep({set_id:1,index:2,count:1,quality:'good',rom:90,rom_units:'deg'})");
+  b.run("onRep({set_id:1,index:2,count:1,quality:'good',rom:90,rom_units:'deg'})");
+  assert.equal(b.run('beeps'),1);
+  assert.equal(b.run('state.live.good'),1);
+  assert.equal(b.run('state.live.reps_completed'),1);
+});

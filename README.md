@@ -23,7 +23,7 @@ exercise history and graph samples can be downloaded as Excel workbooks.
 | Teacher calibration | Three reference movements, live graphs, detected-cycle counter and saved reference | Implemented; real sensor reads must succeed |
 | Rep detection | Calibrated range, hysteresis, timing and good/short/rushed/slow feedback | Software-tested; physical accuracy still needs measurement |
 | LCD feedback | Patient name, completed reps, calibration progress and result | LCD detected and text observed |
-| Grove buzzer on D2 | Short tone for counted reps; one-second manual test | Manual D2 tone heard; full physical rep sequence not verified |
+| Grove buzzer on D2 | One short tone per counted rep; one calibration-ready tone | Manual D2 tone heard; full physical rep sequence not verified |
 | Live MPU diagnostics | Acceleration/gyro graphs, raw numbers/bytes, pause, clear and CSV download | Live changing inputs observed; read failures are displayed |
 | Excel exercise history | Patient details, all saved sets/reps, recorded graph data and calibrations | Implemented and software-tested |
 | Phone access | Responsive browser app, temporary Cloudflare link and QR launcher | Implemented; laptop must remain awake |
@@ -227,7 +227,7 @@ Wireless remains an included feature requiring completion, not a demonstrated su
    Missing readings fail clearly after five seconds; close or retry after fixing
    the connection. Closing calibration cancels it and releases the station.
 3. **Exercise:** Scan a station → **Dumbbells · 5 lb → Bicep curl → Start set**.
-   The app and LCD show the patient name/count; counted reps trigger a short D2 tone.
+   The app and LCD show the patient name/count; completed reps trigger one short D2 tone. Hardware mode silences duplicate phone sounds; calibration sounds once when all three reps are captured.
 4. **Review:** Finish the set, inspect feedback, and open the instructor dashboard.
 5. **Export:** Select **Download Excel** in patient activity or patient details.
 
@@ -270,7 +270,7 @@ cd bridge
 .venv/bin/python -m pytest -q
 ```
 
-The latest run passed 78 backend tests and seven browser-logic checks.
+The latest run passed 81 backend tests and eight browser-logic checks.
 The calibration regression suite covers partial returns, competing motion axes,
 extra motion after capture, sensor gaps, invalid readings, missing data, concurrent
 Save/Cancel, reconnect status and station release after transport failures.
@@ -280,7 +280,7 @@ Run browser logic checks from the repository root:
 node --test bridge/tests/browser/*.test.cjs
 ```
 
-The UNO sketch version 1.2.1 also preserves the detected MPU I2C address for raw
+The UNO sketch version 1.2.2 also preserves the detected MPU I2C address for raw
 reads (0x68 or 0x69). Upload it separately if updating the board; server changes do
 not flash firmware. Compilation and synthetic tests do not establish physical rep
 accuracy, radio range or repeatable wall-power operation.

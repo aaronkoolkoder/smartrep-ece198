@@ -112,7 +112,7 @@ class CalibrationManager:
                         state["reference"]=progress["reference"]
                     if count!=state["progress"] or ready:
                         state["progress"]=count
-                        await self.sessions.show_display(device,state["display_name"],count,'cal')
+                        await self.sessions.show_display(device,state["display_name"],count,'cal_ready' if ready else 'cal')
                         await self.sessions.broadcast({"type":"calibration_progress","calibration_id":identifier,
                             "cycles_seen":count,"target":self.sessions.config["calibration"]["reps_required"],
                             "ready":ready,"provisional":not ready,

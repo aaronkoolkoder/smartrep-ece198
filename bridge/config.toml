@@ -51,6 +51,8 @@ good_min_peak = 0.85
 rushed_max_s = 1.2
 slow_min_s = 8.0
 min_rep_s = 0.6
+min_motion_s = 0.35
+top_hold_ms = 100
 [sets]
 idle_timeout_s = 8
 disconnect_grace_s = 20

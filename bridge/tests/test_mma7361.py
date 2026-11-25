@@ -44,7 +44,7 @@ def test_hardware_calibration_reps_and_lcd(tmp_path,amplitude,direction):
         client.portal.call(feed,0,3)
         assert app.state.calibrations.recordings[identifier]['progress']==3
         assert 'LCD|Mary|1|cal' in commands
-        assert commands[-1]=='LCD|Mary|3|cal'
+        assert commands[-1]=='LCD|Mary|3|cal_ready'
         result=client.post(f'/api/calibrations/{identifier}/done').json()
         assert result['ok'],result
         assert commands[-1]=='LCD|Mary|3|cal_saved'
