@@ -19,7 +19,7 @@ hd44780_I2Cexp lcd;
 bool lcdReady=false;
 
 #define DEVICE_ID "clip-01"
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.2.1"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
@@ -128,7 +128,7 @@ void identity(Stream &out,const char *type){
   out.print(F(",\"i2c_err\":"));out.print(i2cErrors);out.println('}');
 }
 void rawSample(Stream &out){
-  uint8_t bytes[14]={};MPU_ADDR=0x68;
+  uint8_t bytes[14]={};
   bool ok=readRegisters(0x3B,14,bytes);
   out.print(F("{\"t\":\"raw\",\"ms\":"));out.print(millis());
   out.print(F(",\"ok\":"));out.print(ok?"true":"false");

@@ -222,7 +222,10 @@ Wireless remains an included feature requiring completion, not a demonstrated su
    tone. Close diagnostics afterward to release the station.
 2. **Calibrate:** Staff setup → ID `123129` → PIN `0000` → **Bicep curl**. Hold still
    briefly, complete three controlled movements, return to the starting position,
-   then save. The live cycle count is provisional until the reference is accepted.
+   then save. Save unlocks when the shared validator captures three complete
+   cycles. Those samples are frozen, so reaching for Save cannot change the count.
+   Missing readings fail clearly after five seconds; close or retry after fixing
+   the connection. Closing calibration cancels it and releases the station.
 3. **Exercise:** Scan a station → **Dumbbells · 5 lb → Bicep curl → Start set**.
    The app and LCD show the patient name/count; counted reps trigger a short D2 tone.
 4. **Review:** Finish the set, inspect feedback, and open the instructor dashboard.
@@ -267,10 +270,20 @@ cd bridge
 .venv/bin/python -m pytest -q
 ```
 
-The latest full software run passed **58 tests** before the firmware 1.2.0 policy
-change. That final policy change was compiled/uploaded but received no additional
-movement tests, as requested. Compilation and synthetic tests do not establish
-physical rep accuracy, radio range or repeatable wall-power operation.
+The latest run passed 78 backend tests and seven browser-logic checks.
+The calibration regression suite covers partial returns, competing motion axes,
+extra motion after capture, sensor gaps, invalid readings, missing data, concurrent
+Save/Cancel, reconnect status and station release after transport failures.
+Run browser logic checks from the repository root:
+
+```sh
+node --test bridge/tests/browser/*.test.cjs
+```
+
+The UNO sketch version 1.2.1 also preserves the detected MPU I2C address for raw
+reads (0x68 or 0x69). Upload it separately if updating the board; server changes do
+not flash firmware. Compilation and synthetic tests do not establish physical rep
+accuracy, radio range or repeatable wall-power operation.
 
 For a meaningful physical demonstration, compare three trials of 10 manually counted
 reps, check rest/partial/rushed movements, compare tilt against a rough known-angle
