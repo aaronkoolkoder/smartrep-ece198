@@ -19,7 +19,7 @@ hd44780_I2Cexp lcd;
 bool lcdReady=false;
 
 #define DEVICE_ID "clip-01"
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.2.0-recovery"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
@@ -93,6 +93,10 @@ bool readRegisters(uint8_t reg,uint8_t count,uint8_t *buffer){
   return true;
 }
 bool initSensor(){
+  // UNO R4 ignores reset_on_timeout; explicitly reopen its I2C peripheral.
+  Wire.end();
+  Wire.begin();
+  Wire.setClock(50000);
 #ifdef SENSOR_MPU6050
   for(uint8_t address=0x68;address<=0x69;address++){
     MPU_ADDR=address;
