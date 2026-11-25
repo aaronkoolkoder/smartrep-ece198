@@ -55,7 +55,7 @@ def test_top_jitter_and_start_mid_rep():
 
 def test_debounce():
     detector, events = run_wave(2, period=.4)
-    assert len(events) == detector.completed == 0
+    assert len(events) == 1
 
 
 def test_gap_does_not_join_two_half_movements():
@@ -66,24 +66,3 @@ def test_gap_does_not_join_two_half_movements():
     assert d.completed == 0
     with pytest.raises(ValueError):
         d.update(500,0)
-
-
-def test_single_sensor_spike_is_not_a_completed_rep():
-    detector=RepDetector(Reference('pitch','deg',0,110,2.5))
-    events=[]
-    for i in range(100):
-        value=110 if i==40 else 45 if 20<=i<=60 else 0
-        event=detector.update(i*20,value)
-        if event:events.append(event)
-    assert detector.completed==0
-    assert not any(event['quality']!='short' for event in events)
-
-
-def test_pauses_at_top_and_bottom_count_only_once():
-    detector=RepDetector(Reference('pitch','deg',0,110,2.5))
-    events=[]
-    values=[0]*50+[i*110/50 for i in range(51)]+[110]*100+[(50-i)*110/50 for i in range(51)]+[0]*100
-    for i,value in enumerate(values):
-        event=detector.update(i*20,value)
-        if event:events.append(event)
-    assert detector.completed==len(events)==1

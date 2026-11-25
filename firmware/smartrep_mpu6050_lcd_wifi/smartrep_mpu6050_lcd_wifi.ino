@@ -15,12 +15,11 @@ uint32_t buzzUntil=0;
 long displayedReps=0;
 char participantName[17]="";
 bool wasCalibrating=false;
-bool calibrationBeeped=false;
 hd44780_I2Cexp lcd;
 bool lcdReady=false;
 
 #define DEVICE_ID "clip-01"
-#define FW_VERSION "1.2.3"
+#define FW_VERSION "1.2.0"
 #define SENSOR_MPU6050
 // For the optional UNO R3 glove, replace the line above with SENSOR_ADXL335.
 #define ADXL_AXES 3
@@ -60,6 +59,7 @@ bool displayCommand(char *cmd){
     if(!quality) return true;
     *quality++=0;
     bool calibrating=!strncmp(quality,"cal",3);
+    // Buzz only when the count increases within the same mode.
     bool samePerson=!strncmp(participantName,name,16);
     strncpy(participantName,name,16); participantName[16]=0;
     row(0,name);
@@ -67,19 +67,13 @@ bool displayCommand(char *cmd){
     long reps=atol(count);
     if(reps<0) reps=0;
     if(reps>999999) reps=999999;
-    if(!samePerson || !calibrating || reps==0) calibrationBeeped=false;
-    bool repCompleted=samePerson && !calibrating && !wasCalibrating &&
-        reps==displayedReps+1 && (!strcmp(quality,"good") || !strcmp(quality,"rushed") || !strcmp(quality,"slow"));
-    bool calibrationReady=!strcmp(quality,"cal_ready") && !calibrationBeeped;
-    if(repCompleted || calibrationReady) {
+    if(samePerson && calibrating==wasCalibrating && reps>displayedReps) {
       tone(BUZZER_PIN,2000,120);
       buzzUntil=millis()+120;
-      if(calibrationReady) calibrationBeeped=true;
     }
     displayedReps=reps;
     wasCalibrating=calibrating;
-    if(!strcmp(quality,"cal_ready")) strcpy(line,"3 reps captured");
-    else if(!strcmp(quality,"cal_saved")) strcpy(line,"Reference saved");
+    if(!strcmp(quality,"cal_saved")) strcpy(line,"Reference saved");
     else if(!strcmp(quality,"cal_error")) strcpy(line,"Retry in app");
     else if(calibrating) snprintf(line,sizeof(line),"Cal reps: %ld",reps);
     else snprintf(line,sizeof(line),"Reps: %ld",reps);
@@ -134,7 +128,7 @@ void identity(Stream &out,const char *type){
   out.print(F(",\"i2c_err\":"));out.print(i2cErrors);out.println('}');
 }
 void rawSample(Stream &out){
-  uint8_t bytes[14]={};
+  uint8_t bytes[14]={};MPU_ADDR=0x68;
   bool ok=readRegisters(0x3B,14,bytes);
   out.print(F("{\"t\":\"raw\",\"ms\":"));out.print(millis());
   out.print(F(",\"ok\":"));out.print(ok?"true":"false");

@@ -138,7 +138,7 @@ class HardwareSource:
             return
         # Strip command delimiters; the LCD fits 16 ASCII characters.
         safe=''.join(c for c in str(name) if 32<=ord(c)<=126 and c!='|')[:16]
-        quality=quality if quality in ('good','short','rushed','slow','done','cal','cal_ready','cal_saved','cal_error') else 'good'
+        quality=quality if quality in ('good','short','rushed','slow','done','cal','cal_saved','cal_error') else 'good'
         command=f'LCD|{safe}|{max(0,int(count))}|{quality}'
         entry['display_command']=command
         if entry['online']:

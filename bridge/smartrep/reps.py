@@ -44,7 +44,6 @@ class RepDetector:
         self.start_ms = self.departure_ms = None
         self.peak = 0
         self.crossed_top = False
-        self.top_since = None
 
     def update(self, ms, value):
         if not math.isfinite(value):
@@ -71,23 +70,13 @@ class RepDetector:
                 self.departure_ms = None
             return None
         self.peak = max(self.peak, p)
-        if p>=self.settings["top_line"]:
-            if self.top_since is None:
-                self.top_since=ms
-            if ms-self.top_since>=self.settings.get("top_hold_ms",100):
-                self.crossed_top=True
-        else:
-            self.top_since=None
+        self.crossed_top |= p >= self.settings["top_line"]
         if p > bottom:
             return None
         start, peak, full = self.start_ms, self.peak, self.crossed_top
         self.start_ms = self.departure_ms = None
         self.peak = 0
         self.crossed_top = False
-        self.top_since = None
-        duration = (ms-start)/1000
-        if duration<self.settings.get("min_motion_s",.35):
-            return None
         # Debounce between completed attempts, not by time spent above the top.
         if self.last_completion is not None and (ms - self.last_completion) / 1000 < self.settings["min_rep_s"]:
             return None
@@ -132,81 +121,66 @@ class Calibrator:
             raise CalibrationError("Calibration timed out; please do 3 slow, full reps.")
         self.samples.append((ms, signals))
 
-    def progress(self):
-        """Use the same channel selection and complete-cycle checks as saving."""
-        settings = self.config["calibration"]
-        required = settings["reps_required"]
-        candidates = []
+    def finish(self):
         if len(self.samples) < 3:
-            return {"count":0,"reference":None,"reason":"Hold still, then do three full reps."}
+            raise CalibrationError("Not enough samples; please do 3 slow, full reps.")
+        settings = self.config["calibration"]
+        candidates = []
         for key in self.samples[0][1]:
-            values = [signals[key] for _, signals in self.samples]
-            low, high = min(values), max(values)
-            span = high-low
+            values = [s[key] for _, s in self.samples]
+            span = max(values) - min(values)
             angle = key in ("pitch", "roll")
             floor = settings["min_ref_range_deg" if angle else "min_ref_range_g"]
-            if span < floor:
-                continue
-            initial = values[0]
-            direction = next((1 if value>initial else -1 for value in values[1:]
-                              if abs(value-initial)>=settings["min_prominence_frac"]*span),1)
-            normalized = [(v-low)/span if direction==1 else (high-v)/span for v in values]
-            # A peak is complete only after returning to the bottom, not just
-            # after the signal falls partway from its maximum.
-            peaks, valleys, peak_times = [], [], []
-            bottom = self.config["reps"]["bottom_line"]
-            valley = normalized[0]
-            peak, peak_time = valley, self.samples[0][0]
-            rising = False
-            too_fast = False
-            for (ms,_),value in zip(self.samples,normalized):
-                if not rising:
-                    valley = min(valley,value)
-                    if value-valley>=settings["min_prominence_frac"]:
-                        peak,peak_time,rising = value,ms,True
-                else:
-                    if value>peak:
-                        peak,peak_time = value,ms
-                    if peak-value>=settings["min_prominence_frac"] and value<=bottom:
-                        if peak_times and (peak_time-peak_times[-1])/1000<settings["min_cycle_s"]:
-                            too_fast = True
-                        peaks.append(peak)
-                        valleys.append(valley)
-                        peak_times.append(peak_time)
-                        valley,rising = value,False
-            count = len(peaks)
-            reason = None
-            if too_fast:
-                reason = "Reps were too close together; please move slowly."
-            elif count != required:
-                reason = f"Detected {count} rep{'s' if count!=1 else ''}; please do {required} slow, full reps."
-            elif rising or normalized[-1]>bottom:
-                reason = "Finish the last rep at the starting position and try again."
-            elif normalized[0]>bottom:
-                reason = "Start at the resting position and return there after each rep."
-            reference = None
-            if reason is None:
-                duration = median((b-a)/1000 for a,b in zip(peak_times,peak_times[1:]))
-                ref_bottom = low+median(valleys+[valley])*span if direction==1 else high-median(valleys+[valley])*span
-                ref_top = low+median(peaks)*span if direction==1 else high-median(peaks)*span
-                reference = Reference(key,"deg" if angle else "g",min(ref_bottom,ref_top),
-                                      max(ref_bottom,ref_top),duration,direction)
-            noise = settings["angle_noise_deg" if angle else "accel_noise_g"]
-            rank = (count<=required, min(count+int(rising),required),
-                    angle and span>=settings["prefer_angle_min_deg"], reference is not None, count,
-                    pvariance(values)/noise**2)
-            candidates.append((rank,{"count":count,"signal":key,"reference":reference,"reason":reason}))
+            if span >= floor:
+                noise = settings["angle_noise_deg" if angle else "accel_noise_g"]
+                prefer = angle and span >= settings["prefer_angle_min_deg"]
+                candidates.append((prefer, pvariance(values) / noise ** 2, key, values))
         if not candidates:
-            return {"count":0,"reference":None,"reason":"Movement range too small; check the sensor and try 3 full reps."}
-        return max(candidates,key=lambda candidate:candidate[0])[1]
-
-    def finish(self):
-        if len(self.samples)<3:
-            raise CalibrationError("Not enough samples; please do 3 slow, full reps.")
-        result = self.progress()
-        if result["reference"] is None:
-            raise CalibrationError(result["reason"])
-        return result["reference"]
+            raise CalibrationError("Movement range too small; check the sensor and try 3 full reps.")
+        _, _, signal, values = max(candidates)
+        low, high = min(values), max(values)
+        span = high - low
+        direction = 1
+        initial = values[0]
+        for value in values[1:]:
+            if abs(value - initial) >= settings["min_prominence_frac"] * span:
+                direction = 1 if value > initial else -1
+                break
+        normalized = [(v - low) / span if direction == 1 else (high - v) / span for v in values]
+        # Use full peaks and valleys; threshold crossings underestimate range.
+        peaks, valleys, peak_times = [], [normalized[0]], []
+        rising = False
+        valley = normalized[0]
+        peak = valley
+        peak_time = self.samples[0][0]
+        prominence = settings["min_prominence_frac"]
+        for (ms, _), p in zip(self.samples, normalized):
+            if not rising:
+                valley = min(valley, p)
+                if p - valley >= prominence:
+                    valleys.append(valley)
+                    peak, peak_time, rising = p, ms, True
+            else:
+                if p > peak:
+                    peak, peak_time = p, ms
+                if peak - p >= prominence:
+                    if peak_times and (peak_time - peak_times[-1]) / 1000 < settings["min_cycle_s"]:
+                        raise CalibrationError("Reps were too close together; please move slowly.")
+                    peaks.append(peak)
+                    peak_times.append(peak_time)
+                    valley, rising = p, False
+        if not rising:
+            valleys.append(valley)
+        required = settings["reps_required"]
+        if not required - 1 <= len(peaks) <= required + 1:
+            raise CalibrationError(f"Detected {len(peaks)} rep{'s' if len(peaks) != 1 else ''}; please do {required} slow, full reps.")
+        if rising or normalized[-1] > self.config["reps"]["bottom_line"]:
+            raise CalibrationError("Finish the last rep at the starting position and try again.")
+        duration = median((b - a) / 1000 for a, b in zip(peak_times, peak_times[1:]))
+        ref_bottom = low + median(valleys) * span if direction == 1 else high - median(valleys) * span
+        ref_top = low + median(peaks) * span if direction == 1 else high - median(peaks) * span
+        return Reference(signal, "deg" if signal in ("pitch", "roll") else "g",
+                         min(ref_bottom, ref_top), max(ref_bottom, ref_top), duration, direction)
 
 
 def replay(path, reference_path, units="mpu6050_4g_500dps", config=None):

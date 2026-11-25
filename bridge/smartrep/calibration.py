@@ -3,7 +3,6 @@ import asyncio
 import hmac
 import time
 import json
-import logging
 from .db import connect, utc_now
 from .orientation import SignalPipeline
 from .reps import Calibrator, CalibrationError
@@ -44,7 +43,7 @@ class CalibrationManager:
                 "pipeline":SignalPipeline(device["units"],manager.config),"calibrator":Calibrator(manager.config),
                 "started":time.monotonic(),"samples":[],"result":None,"progress":0,
                 "diagnostic":device.get("sensor_ok") is False,"last_graph_ms":-1000,
-                "display_name":profile["display_name"],"reference":None,"last_sample_at":time.monotonic(),"last_progress_ms":-1000}
+                "display_name":profile["display_name"],"channels":{},"progress_signal":None}
             if hasattr(manager.source,"set_calibrating"):
                 manager.source.set_calibrating(device["id"],True)
             try:
@@ -65,17 +64,10 @@ class CalibrationManager:
             return {"calibration_id":identifier,"target":manager.config["calibration"]["reps_required"],"diagnostic":self.recordings[identifier]["diagnostic"]}
 
     async def sample(self,device,raw):
-        async with self.sessions.lock:
-            await self._sample(device,raw)
-
-    async def _sample(self,device,raw):
         for identifier,state in list(self.recordings.items()):
-            if state["device"] != device or state["result"] is not None or state.get("reference") or state.get("failure"):
+            if state["device"] != device or state["result"] is not None:
                 continue
             try:
-                state["last_sample_at"]=time.monotonic()
-                if raw.get("read_ok") is False:
-                    raise CalibrationError("Sensor read failed. Check wiring and start calibration again.")
                 ms=int(raw['ms'])
                 if ms-state['last_graph_ms']>=100:
                     state['last_graph_ms']=ms
@@ -97,37 +89,49 @@ class CalibrationManager:
                     raise CalibrationError("Sensor gap during calibration; check the cable and try again.")
                 if sample["ready"]:
                     state["calibrator"].add(sample["ms"],sample["signals"])
-                    if ms-state["last_progress_ms"]<100:
-                        continue
-                    state["last_progress_ms"]=ms
-                    progress=state["calibrator"].progress()
-                    count=progress["count"]
-                    ready=progress["reference"] is not None
-                    if count>=self.sessions.config["calibration"]["reps_required"] and not ready:
-                        state["failure"]=progress["reason"]
-                        continue
-                    if ready:
-                        # Freeze the validated three cycles. Reaching for Save,
-                        # more movements or a later unplug cannot change them.
-                        state["reference"]=progress["reference"]
-                    if count!=state["progress"] or ready:
+                    # Lock the feedback axis after its first full cycle.
+                    settings=self.sessions.config["calibration"]
+                    for key,value in sample["signals"].items():
+                        channel=state["channels"].setdefault(key,{
+                            "initial":value,"low":value,"high":value,
+                            "direction":None,"raised":False,"count":0,"last":None})
+                        channel["low"]=min(channel["low"],value)
+                        channel["high"]=max(channel["high"],value)
+                        floor=settings["min_ref_range_deg" if key in ("pitch","roll") else "min_ref_range_g"]
+                        span=channel["high"]-channel["low"]
+                        if channel["direction"] is None and abs(value-channel["initial"])>=floor:
+                            channel["direction"]=1 if value>channel["initial"] else -1
+                        if span<floor or channel["direction"] is None:
+                            continue
+                        p=(value-channel["low"])/span
+                        if channel["direction"]<0:
+                            p=1-p
+                        if p>.8:
+                            channel["raised"]=True
+                        if channel["raised"] and p<.2:
+                            channel["raised"]=False
+                            if channel["last"] is None or (sample["ms"]-channel["last"])/1000>=settings["min_cycle_s"]:
+                                channel["count"]+=1
+                                channel["last"]=sample["ms"]
+                    if state["progress_signal"] is None:
+                        candidates=[key for key,c in state["channels"].items() if c["count"]]
+                        if candidates:
+                            def score(key):
+                                c=state["channels"][key]
+                                angle=key in ("pitch","roll")
+                                noise=settings["angle_noise_deg" if angle else "accel_noise_g"]
+                                span=c["high"]-c["low"]
+                                return (angle and span>=settings["prefer_angle_min_deg"],span/noise)
+                            state["progress_signal"]=max(candidates,key=score)
+                    key=state["progress_signal"]
+                    count=state["channels"][key]["count"] if key else 0
+                    if count!=state["progress"]:
                         state["progress"]=count
-                        await self.sessions.show_display(device,state["display_name"],count,'cal_ready' if ready else 'cal')
+                        await self.sessions.show_display(device,state["display_name"],count,'cal')
                         await self.sessions.broadcast({"type":"calibration_progress","calibration_id":identifier,
-                            "cycles_seen":count,"target":self.sessions.config["calibration"]["reps_required"],
-                            "ready":ready,"provisional":not ready,
-                            "message":"Three reps captured. Save reference." if ready else progress["reason"]},state["participant"])
+                            "cycles_seen":count,"target":settings["reps_required"],"provisional":True},state["participant"])
             except (ValueError,KeyError,TypeError) as error:
                 state["failure"]=str(error)
-
-    def status(self,identifier):
-        state=self.recordings.get(identifier)
-        if state is None:
-            raise SessionError("CALIBRATION_NOT_FOUND","Calibration not found.",404)
-        return {"calibration_id":identifier,"cycles_seen":state["progress"],
-                "target":self.sessions.config["calibration"]["reps_required"],
-                "ready":state.get("reference") is not None,"result":state["result"],
-                "failure":state.get("failure"),"diagnostic":state["diagnostic"]}
 
     async def done(self,identifier):
         state=self.recordings.get(identifier)
@@ -139,14 +143,8 @@ class CalibrationManager:
         async with manager.lock:
             if state["result"] is not None:
                 return state["result"]
-            try:
-                await asyncio.wait_for(manager.source.stop(state["device"]),timeout=2)
-            except Exception:
-                logging.warning("Could not stop calibration stream for %s",state["device"],exc_info=True)
-                if not state.get("reference"):
-                    state["failure"]="Station disconnected before calibration completed. Reconnect and try again."
-            finally:
-                manager.reserved.discard(state["device"])
+            await manager.source.stop(state["device"])
+            manager.reserved.discard(state["device"])
             if hasattr(manager.source,"set_calibrating"):
                 manager.source.set_calibrating(state["device"],False)
             try:
@@ -154,7 +152,7 @@ class CalibrationManager:
                     raise CalibrationError('Diagnostic readings only: restore successful sensor reads before saving a movement reference.')
                 if state.get("failure"):
                     raise CalibrationError(state["failure"])
-                ref=state.get("reference") or state["calibrator"].finish()
+                ref=state["calibrator"].finish()
                 with connect(manager.path) as db:
                     db.execute("INSERT OR REPLACE INTO rep_references VALUES (?,?,?,?,?,?,?,?,?,?)",(state["participant"],state["exercise"],ref.signal,ref.units,ref.ref_low,ref.ref_high,ref.ref_duration_s,ref.direction,state["device"],utc_now()))
                 result={"ok":True,"signal":ref.signal,"units":ref.units,"ref_low":ref.ref_low,"ref_high":ref.ref_high,"ref_duration_s":ref.ref_duration_s,"direction":ref.direction}
@@ -181,9 +179,9 @@ class CalibrationManager:
             # Mark finished before awaiting transport so late samples cannot enter it.
             state["result"]=result
             try:
-                await asyncio.wait_for(manager.source.stop(state["device"]),timeout=2)
-            except Exception:
-                logging.warning("Could not stop cancelled stream for %s",state["device"],exc_info=True)
+                await manager.source.stop(state["device"])
+            except (ConnectionError,OSError):
+                pass
             finally:
                 manager.reserved.discard(state["device"])
                 if hasattr(manager.source,"set_calibrating"):
@@ -194,20 +192,12 @@ class CalibrationManager:
             await manager.broadcast({"type":"calibration_done","calibration_id":identifier,**result},state["participant"])
             return result
 
-    async def check_timeouts(self):
-        for identifier,state in list(self.recordings.items()):
-            if state["result"] is not None:
-                continue
-            now=time.monotonic()
-            if not state.get("reference") and now-state["last_sample_at"]>=5:
-                state["failure"]="No live sensor readings for 5 seconds. Check wiring and reconnect before retrying."
-            if state.get("failure") or now-state["started"]>=self.sessions.config["calibration"]["max_seconds"]:
-                await self.done(identifier)
-
     async def monitor(self):
         while True:
             await asyncio.sleep(.5)
-            await self.check_timeouts()
+            for identifier,state in list(self.recordings.items()):
+                if state["result"] is None and time.monotonic()-state["started"] >= self.sessions.config["calibration"]["max_seconds"]:
+                    await self.done(identifier)
 
     async def close(self):
         for identifier,state in list(self.recordings.items()):

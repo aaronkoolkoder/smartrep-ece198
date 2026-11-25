@@ -62,9 +62,9 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
         async def on_sample(device, sample):
             app.state.samples_received += 1
             await app.state.diagnostics.sample(device,sample)
-            await app.state.calibrations.sample(device, sample)
             if sample.get('read_ok') is False:
                 return
+            await app.state.calibrations.sample(device, sample)
             await app.state.manager.sample(device, sample)
 
         app.state.source = SimSource(on_sample, config.get("signal", {}).get("sample_hz", 50)) if simulate else HardwareSource(on_sample, config, broadcast, ports)
@@ -255,10 +255,6 @@ def create_app(db_path, simulate=False, config=None, crowd=False, ports=None):
     @app.post("/api/calibrations", status_code=201)
     async def start_calibration(body: CalibrationBody):
         return await app.state.calibrations.start(body.participant_id,body.exercise_id,body.station_id,body.pin)
-
-    @app.get("/api/calibrations/{identifier}")
-    def calibration_status(identifier: int):
-        return app.state.calibrations.status(identifier)
 
     @app.post("/api/calibrations/{identifier}/done")
     async def finish_calibration(identifier: int):
